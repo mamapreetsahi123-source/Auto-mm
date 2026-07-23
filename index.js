@@ -81,6 +81,10 @@ client.once(Events.ClientReady, async (c) => {
 client.on(Events.InteractionCreate, async interaction => {
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'panel') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        return interaction.reply({ content: '❌ You do not have administrator permissions to use this command.', ephemeral: true });
+      }
+
       await interaction.deferReply({ ephemeral: true });
       const targetChannel = interaction.options.getChannel('channel');
 
@@ -258,6 +262,30 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
+    if (interaction.customId === 'role_confirm_incorrect') {
+      const userId = interaction.user.id;
+      if (userId !== ticketData.roles.sender && userId !== ticketData.roles.receiver) {
+        return interaction.reply({ content: '❌ You are not a registered participant.', ephemeral: true });
+      }
+      ticketData.roleConfirmed = {};
+      ticketData.roleChoices = {};
+      ticketData.status = 'assigning_roles';
+
+      const roleEmbed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('Role Assignment')
+        .setDescription(`Roles configuration rejected. Please select your role again.`);
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('role_sending').setLabel('Sending').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('role_receiving').setLabel('Receiving').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('role_reset').setLabel('Reset').setStyle(ButtonStyle.Danger)
+      );
+
+      await interaction.update({ embeds: [roleEmbed], components: [row] });
+      return;
+    }
+
     if (interaction.customId === 'amount_confirm_correct') {
       const userId = interaction.user.id;
       if (userId !== ticketData.roles.sender && userId !== ticketData.roles.receiver) {
@@ -336,6 +364,21 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
+    if (interaction.customId === 'amount_confirm_incorrect') {
+      const userId = interaction.user.id;
+      if (userId !== ticketData.roles.sender && userId !== ticketData.roles.receiver) {
+        return interaction.reply({ content: '❌ You are not a registered participant.', ephemeral: true });
+      }
+      ticketData.amountConfirmed = {};
+      ticketData.status = 'awaiting_amount';
+      await interaction.update({ 
+        content: `<@${ticketData.roles.sender}>`, 
+        embeds: [new EmbedBuilder().setColor(0xFEE75C).setTitle('Deal Amount').setDescription('Amount rejected. State the amount the bot is expected to receive in USD (eg. 100.59)')], 
+        components: [] 
+      });
+      return;
+    }
+
     // Public Copy Details - Displays ONLY the address block code for clean copying
     if (interaction.customId === 'copy_details') {
       await interaction.reply({
@@ -356,7 +399,7 @@ client.on(Events.InteractionCreate, async interaction => {
       const cancelEmbed = new EmbedBuilder()
         .setColor(0xED4245)
         .setTitle('⚠️ Cancellation Requested')
-        .setDescription(`<@${userId}> requested to cancel this deal transaction.\n\n**Both parties must confirm cancellation before closing:**\n• <@${ticketData.sender}>: ❌ Pending\n• <@${ticketData.receiver}>: ❌ Pending`);
+        .setDescription(`<@${userId}> requested to cancel this deal transaction.\n\n**Both parties must confirm cancellation before proceeding to refund:**\n• <@${ticketData.sender}>: ❌ Pending\n• <@${ticketData.receiver}>: ❌ Pending`);
 
       const cancelRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('confirm_cancel_yes').setLabel('Confirm Cancel').setStyle(ButtonStyle.Danger),
@@ -383,14 +426,12 @@ client.on(Events.InteractionCreate, async interaction => {
         .setDescription(`Cancellation requested update sequence.\n\n**Both parties must confirm cancellation:**\n• <@${ticketData.sender}>: ${senderConfirmed}\n• <@${ticketData.receiver}>: ${receiverConfirmed}`);
 
       if (ticketData.cancelConfirmed[ticketData.sender] && ticketData.cancelConfirmed[ticketData.receiver]) {
-        await interaction.update({ content: '❌ Both parties have successfully confirmed cancellation. Purging ticket channel in 5 seconds...', embeds: [], components: [] });
-        setTimeout(async () => {
-          try { 
-            await interaction.channel.delete(); 
-          } catch (error) {
-            console.error('Failed to clean up cancelled ticket channel:', error);
-          }
-        }, 5000);
+        ticketData.status = 'awaiting_sender_refund_address';
+        await interaction.update({ 
+          content: `<@${ticketData.roles.sender}>`, 
+          embeds: [new EmbedBuilder().setColor(0xFEE75C).setTitle('Cancellation Confirmed - Refund Payout').setDescription('Both parties confirmed cancellation. Please provide your sender refund payout address in chat.')], 
+          components: [] 
+        });
       } else {
         await interaction.update({ embeds: [updateEmbed] });
       }
@@ -417,7 +458,7 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
-    // Address Confirmation & Final Fund Release Execution
+    // Address Confirmation & Final Fund Release Execution (Receiver Payout)
     if (interaction.customId === 'address_confirm_yes') {
       await interaction.update({ content: '✅ Address verified successfully. Releasing payment securely on ledger...', embeds: [], components: [] });
 
@@ -456,6 +497,74 @@ client.on(Events.InteractionCreate, async interaction => {
           console.error('Failed to auto-delete completed ticket channel:', error);
         }
       }, 300000);
+      return;
+    }
+
+    if (interaction.customId === 'address_confirm_no') {
+      if (interaction.user.id !== ticketData.roles.receiver) {
+        return interaction.reply({ content: '❌ Only the receiver can go back.', ephemeral: true });
+      }
+      ticketData.status = 'awaiting_receiver_address';
+      await interaction.update({
+        content: `<@${ticketData.roles.receiver}>`,
+        embeds: [new EmbedBuilder().setColor(0x5865F2).setTitle('Provide your payout address').setDescription('Address rejected. Please re-type your payout address in chat.')],
+        components: []
+      });
+      return;
+    }
+
+    // Sender Refund Address Confirmation & Execution
+    if (interaction.customId === 'refund_address_confirm_yes') {
+      await interaction.update({ content: '✅ Refund address verified. Processing refund to sender...', embeds: [], components: [] });
+
+      const { ltcPrice, usdtPrice } = await getCryptoPrices();
+      const isLtc = ticketData.coin.includes('Litecoin');
+      const cryptoAmount = (ticketData.amountUSD / (isLtc ? ltcPrice : usdtPrice)).toFixed(isLtc ? 6 : 2);
+
+      const refundEmbed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('Refund Processed')
+        .setDescription(`The cancellation refund has been sent successfully to the sender's address!`)
+        .addFields(
+          { name: 'Refund Amount', value: `${cryptoAmount} ${isLtc ? 'LTC' : 'USDT'} ($${ticketData.amountUSD.toFixed(2)} USD)`, inline: false },
+          { name: 'Transaction', value: 'refund...0c4a88', inline: false }
+        );
+
+      const completeEmbed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('Deal Cancelled & Refunded')
+        .setDescription(`This ticket channel will automatically purge and close in 5 minutes.`);
+
+      const closeRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Secondary)
+      );
+
+      await interaction.channel.send({
+        content: `<@${ticketData.roles.sender}> <@${ticketData.roles.receiver}>`,
+        embeds: [refundEmbed, completeEmbed],
+        components: [closeRow]
+      });
+
+      setTimeout(async () => {
+        try { 
+          await interaction.channel.delete(); 
+        } catch (error) {
+          console.error('Failed to auto-delete refunded ticket channel:', error);
+        }
+      }, 300000);
+      return;
+    }
+
+    if (interaction.customId === 'refund_address_confirm_no') {
+      if (interaction.user.id !== ticketData.roles.sender) {
+        return interaction.reply({ content: '❌ Only the sender can go back.', ephemeral: true });
+      }
+      ticketData.status = 'awaiting_sender_refund_address';
+      await interaction.update({
+        content: `<@${ticketData.roles.sender}>`,
+        embeds: [new EmbedBuilder().setColor(0xFEE75C).setTitle('Cancellation Confirmed - Refund Payout').setDescription('Address rejected. Please re-type your sender refund payout address in chat.')],
+        components: []
+      });
       return;
     }
   }
@@ -546,6 +655,27 @@ client.on(Events.MessageCreate, async message => {
       );
 
       await message.channel.send({ embeds: [verifyAddressEmbed], components: [row] });
+    }
+  }
+
+  // Step 4: Sender Refund Address Input Processing (After Cancellation)
+  else if (ticketData.status === 'awaiting_sender_refund_address' && message.author.id === ticketData.roles.sender) {
+    const address = message.content.trim();
+    if (address.length > 5) {
+      ticketData.senderRefundAddress = address;
+      ticketData.status = 'refund_completed';
+
+      const verifyRefundAddressEmbed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle(`Is this your refund address?`)
+        .setDescription(`Please verify your refund address below. Once confirmed, funds will be returned to you.\n\nAddress\n${address}`);
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('refund_address_confirm_yes').setLabel('Confirm').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('refund_address_confirm_no').setLabel('Back').setStyle(ButtonStyle.Secondary)
+      );
+
+      await message.channel.send({ embeds: [verifyRefundAddressEmbed], components: [row] });
     }
   }
 });
