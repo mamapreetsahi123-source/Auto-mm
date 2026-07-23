@@ -25,6 +25,7 @@ const client = new Client({
 
 const GUILD_ID = '1493598034544820284'; 
 const TICKET_CATEGORY_ID = '1515929427345674341';
+const LOG_CHANNEL_ID = '1515951964469334017';
 const MIDDLEMAN_ADDRESS = 'LbHndHWHHYcCx8PY9ZYEnoaYyXeeui1LrE';
 
 // Active ticket state memory store tracking all metadata and progression steps
@@ -50,6 +51,18 @@ async function getCryptoPrices() {
     console.error('Failed to fetch live crypto prices from CoinGecko API, utilizing default fallbacks:', error);
   }
   return { ltcPrice, usdtPrice };
+}
+
+/**
+ * Generates a random transaction ID string formatted like the logs image (e.g. d91d7899d...d1d21a243)
+ */
+function generateRandomTxId() {
+  const chars = 'abcdef0123456789';
+  let part1 = '';
+  let part2 = '';
+  for (let i = 0; i < 9; i++) part1 += chars.charAt(Math.floor(Math.random() * chars.length));
+  for (let i = 0; i < 11; i++) part2 += chars.charAt(Math.floor(Math.random() * chars.length));
+  return `${part1}...${part2}`;
 }
 
 const commands = [
@@ -116,6 +129,32 @@ client.on(Events.InteractionCreate, async interaction => {
       if (!interaction.channel.name.startsWith('ticket-')) {
         return interaction.reply({ content: '❌ This command can only be executed inside an active ticket channel environment.', ephemeral: true });
       }
+      
+      const ticketData = tickets.get(interaction.channel.id);
+      if (ticketData && ticketData.status === 'completed') {
+        const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
+        if (logChannel) {
+          const isLtc = ticketData.coin.includes('Litecoin');
+          const coinSymbol = isLtc ? 'LTC' : 'USDT';
+          const coinEmoji = isLtc ? '🪙' : '🟢';
+          const { ltcPrice, usdtPrice } = await getCryptoPrices();
+          const rate = isLtc ? ltcPrice : usdtPrice;
+          const cryptoAmount = (ticketData.totalAmountWithFee / rate).toFixed(isLtc ? 6 : 2);
+          const txId = generateRandomTxId();
+
+          const logEmbed = new EmbedBuilder()
+            .setColor(isLtc ? 0x3498DB : 0x2ECC71)
+            .setTitle(`${coinEmoji} · Trade Completed`)
+            .setDescription(`\`${cryptoAmount}\` **${coinSymbol}** ($\`${ticketData.totalAmountWithFee.toFixed(2)}\` USD)`)
+            .addFields(
+              { name: 'Sender', value: '`Anonymous`', inline: true },
+              { name: 'Receiver', value: '`Anonymous`', inline: true },
+              { name: 'Transaction ID', value: `\`${txId}\``, inline: false }
+            );
+          await logChannel.send({ embeds: [logEmbed] }).catch(err => console.error('Failed to send log:', err));
+        }
+      }
+
       await interaction.reply({ content: '🔒 Securely closing this ticket channel in 5 seconds...' });
       setTimeout(async () => {
         try { 
@@ -156,6 +195,11 @@ client.on(Events.InteractionCreate, async interaction => {
           roleChoices: {},
           roleConfirmed: {},
           amountUSD: 0,
+          feeUSD: 0,
+          totalAmountWithFee: 0,
+          feePayer: null,
+          feePayerChoices: {},
+          feePayerConfirmed: {},
           amountConfirmed: {},
           cancelConfirmed: {},
           status: 'waiting_partner'
@@ -184,6 +228,30 @@ client.on(Events.InteractionCreate, async interaction => {
     if (!ticketData) return;
 
     if (interaction.customId === 'close_ticket') {
+      if (ticketData.status === 'completed') {
+        const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
+        if (logChannel) {
+          const isLtc = ticketData.coin.includes('Litecoin');
+          const coinSymbol = isLtc ? 'LTC' : 'USDT';
+          const coinEmoji = isLtc ? '🪙' : '🟢';
+          const { ltcPrice, usdtPrice } = await getCryptoPrices();
+          const rate = isLtc ? ltcPrice : usdtPrice;
+          const cryptoAmount = (ticketData.totalAmountWithFee / rate).toFixed(isLtc ? 6 : 2);
+          const txId = generateRandomTxId();
+
+          const logEmbed = new EmbedBuilder()
+            .setColor(isLtc ? 0x3498DB : 0x2ECC71)
+            .setTitle(`${coinEmoji} · Trade Completed`)
+            .setDescription(`\`${cryptoAmount}\` **${coinSymbol}** ($\`${ticketData.totalAmountWithFee.toFixed(2)}\` USD)`)
+            .addFields(
+              { name: 'Sender', value: '`Anonymous`', inline: true },
+              { name: 'Receiver', value: '`Anonymous`', inline: true },
+              { name: 'Transaction ID', value: `\`${txId}\``, inline: false }
+            );
+          await logChannel.send({ embeds: [logEmbed] }).catch(err => console.error('Failed to send log:', err));
+        }
+      }
+
       await interaction.reply({ content: '🔒 Closing ticket channel in 5 seconds...' });
       setTimeout(async () => {
         try { 
@@ -296,70 +364,27 @@ client.on(Events.InteractionCreate, async interaction => {
       await interaction.reply({ content: `<@${userId}> has confirmed the transaction amount configuration.` });
 
       if (ticketData.amountConfirmed[ticketData.roles.sender] && ticketData.amountConfirmed[ticketData.roles.receiver]) {
-        ticketData.status = 'invoice_ready';
+        // Check if fee applies (> 50$)
+        if (ticketData.amountUSD > 50) {
+          ticketData.feeUSD = ticketData.amountUSD > 250 ? 1.50 : 0.50;
+          ticketData.status = 'awaiting_fee_payer';
 
-        const { ltcPrice, usdtPrice } = await getCryptoPrices();
-        const isLtc = ticketData.coin.includes('Litecoin');
-        const rate = isLtc ? ltcPrice : usdtPrice;
-        const cryptoAmount = (ticketData.amountUSD / rate).toFixed(isLtc ? 6 : 2);
+          const feeEmbed = new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setTitle('Fee Payer Selection')
+            .setDescription(`This deal requires a middleman fee of **$${ticketData.feeUSD.toFixed(2)}**.\n\nPlease select who will pay the fee: **Sender** or **Receiver**.`);
 
-        const summaryEmbed = new EmbedBuilder()
-          .setColor(0x5865F2)
-          .setTitle('📋 Deal Summary')
-          .addFields(
-            { name: 'Sender', value: `<@${ticketData.roles.sender}>`, inline: false },
-            { name: 'Receiver', value: `<@${ticketData.roles.receiver}>`, inline: false },
-            { name: 'Deal Value', value: `$${ticketData.amountUSD.toFixed(2)}`, inline: false }
+          const feeRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('fee_payer_sender').setLabel('Sender').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('fee_payer_receiver').setLabel('Receiver').setStyle(ButtonStyle.Success)
           );
 
-        const invoiceEmbed = new EmbedBuilder()
-          .setColor(0x5865F2)
-          .setTitle('📬 Payment Invoice')
-          .setDescription(`<@${ticketData.roles.sender}> Send the funds as part of the deal to the Middleman address specified below.`)
-          .addFields(
-            { name: 'Address', value: MIDDLEMAN_ADDRESS, inline: false },
-            { name: 'Amount', value: `${cryptoAmount} ${isLtc ? 'LTC' : 'USDT'} ($${ticketData.amountUSD.toFixed(2)} USD)`, inline: false },
-            { name: 'Exchange Rate', value: `1 ${isLtc ? 'LTC' : 'USDT'} = $${rate.toFixed(2)} USD`, inline: false }
-          );
-
-        const copyRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('copy_details').setLabel('Copy Details').setStyle(ButtonStyle.Secondary)
-        );
-
-        await interaction.channel.send({ embeds: [summaryEmbed] });
-        await interaction.channel.send({ embeds: [invoiceEmbed], components: [copyRow] });
-
-        const awaitingMsg = await interaction.channel.send({ content: '⏳ Awaiting transaction confirmation on network...' });
-
-        setTimeout(async () => {
-          try {
-            await awaitingMsg.delete();
-            const successTxEmbed = new EmbedBuilder()
-              .setColor(0x57F287)
-              .setTitle('Payment Received')
-              .setDescription('The payment is now secured and verified.')
-              .addFields(
-                { name: 'Amount Received', value: `${cryptoAmount} ${isLtc ? 'LTC' : 'USDT'} ($${ticketData.amountUSD.toFixed(2)} USD)`, inline: false }
-              );
-
-            const readyEmbed = new EmbedBuilder()
-              .setColor(0x5865F2)
-              .setDescription(`The receiver (<@${ticketData.roles.receiver}>) may now provide goods to the sender (<@${ticketData.roles.sender}>).\n\nWhen complete, the sender must click 'Release'.`);
-
-            const releaseRow = new ActionRowBuilder().addComponents(
-              new ButtonBuilder().setCustomId('trigger_release').setLabel('Release').setStyle(ButtonStyle.Success),
-              new ButtonBuilder().setCustomId('trigger_cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary)
-            );
-
-            await interaction.channel.send({
-              content: `<@${ticketData.roles.sender}> <@${ticketData.roles.receiver}>`,
-              embeds: [successTxEmbed, readyEmbed],
-              components: [releaseRow]
-            });
-          } catch (error) {
-            console.error('Error handling simulated payment success sequence:', error);
-          }
-        }, 120000);
+          await interaction.channel.send({ content: `<@${ticketData.roles.sender}> <@${ticketData.roles.receiver}>`, embeds: [feeEmbed], components: [feeRow] });
+        } else {
+          ticketData.feeUSD = 0;
+          ticketData.totalAmountWithFee = ticketData.amountUSD;
+          await proceedToInvoice(interaction.channel, ticketData);
+        }
       }
       return;
     }
@@ -376,6 +401,72 @@ client.on(Events.InteractionCreate, async interaction => {
         embeds: [new EmbedBuilder().setColor(0xFEE75C).setTitle('Deal Amount').setDescription('Amount rejected. State the amount the bot is expected to receive in USD (eg. 100.59)')], 
         components: [] 
       });
+      return;
+    }
+
+    // Fee Payer Selection Buttons
+    if (interaction.customId === 'fee_payer_sender' || interaction.customId === 'fee_payer_receiver') {
+      const userId = interaction.user.id;
+      if (userId !== ticketData.roles.sender && userId !== ticketData.roles.receiver) {
+        return interaction.reply({ content: '❌ You are not a registered participant.', ephemeral: true });
+      }
+
+      ticketData.feePayerChoice = interaction.customId === 'fee_payer_sender' ? 'Sender' : 'Receiver';
+
+      const feeChoiceEmbed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('Confirm Fee Payer')
+        .setDescription(`Selected Fee Payer: **${ticketData.feePayerChoice}**\nFee Amount: **$${ticketData.feeUSD.toFixed(2)}**\n\n**Both users must click Correct to proceed.**`);
+
+      const confirmRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('fee_confirm_correct').setLabel('Correct').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('fee_confirm_incorrect').setLabel('Incorrect').setStyle(ButtonStyle.Secondary)
+      );
+
+      await interaction.update({ embeds: [feeChoiceEmbed], components: [confirmRow] });
+      return;
+    }
+
+    if (interaction.customId === 'fee_confirm_correct') {
+      const userId = interaction.user.id;
+      if (userId !== ticketData.roles.sender && userId !== ticketData.roles.receiver) {
+        return interaction.reply({ content: '❌ You are not a registered participant.', ephemeral: true });
+      }
+
+      ticketData.feePayerConfirmed[userId] = true;
+      await interaction.reply({ content: `<@${userId}> has confirmed the fee payer configuration.` });
+
+      if (ticketData.feePayerConfirmed[ticketData.roles.sender] && ticketData.feePayerConfirmed[ticketData.roles.receiver]) {
+        // If fee payer is Sender, add fee to total amount sent. If Receiver, fee is paid separately or absorbed, total remains deal amount or adjusted. Let's add it to total amount if Sender pays, or keep total amount as deal amount. Usually sender sends deal amount + fee if sender pays fee.
+        if (ticketData.feePayerChoice === 'Sender') {
+          ticketData.totalAmountWithFee = ticketData.amountUSD + ticketData.feeUSD;
+        } else {
+          ticketData.totalAmountWithFee = ticketData.amountUSD;
+        }
+        await proceedToInvoice(interaction.channel, ticketData);
+      }
+      return;
+    }
+
+    if (interaction.customId === 'fee_confirm_incorrect') {
+      const userId = interaction.user.id;
+      if (userId !== ticketData.roles.sender && userId !== ticketData.roles.receiver) {
+        return interaction.reply({ content: '❌ You are not a registered participant.', ephemeral: true });
+      }
+      ticketData.feePayerConfirmed = {};
+      ticketData.status = 'awaiting_fee_payer';
+
+      const feeEmbed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('Fee Payer Selection')
+        .setDescription(`Fee choice rejected. This deal requires a middleman fee of **$${ticketData.feeUSD.toFixed(2)}**.\n\nPlease select who will pay the fee: **Sender** or **Receiver**.`);
+
+      const feeRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('fee_payer_sender').setLabel('Sender').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('fee_payer_receiver').setLabel('Receiver').setStyle(ButtonStyle.Success)
+      );
+
+      await interaction.update({ embeds: [feeEmbed], components: [feeRow] });
       return;
     }
 
@@ -461,17 +552,18 @@ client.on(Events.InteractionCreate, async interaction => {
     // Address Confirmation & Final Fund Release Execution (Receiver Payout)
     if (interaction.customId === 'address_confirm_yes') {
       await interaction.update({ content: '✅ Address verified successfully. Releasing payment securely on ledger...', embeds: [], components: [] });
+      ticketData.status = 'completed';
 
       const { ltcPrice, usdtPrice } = await getCryptoPrices();
       const isLtc = ticketData.coin.includes('Litecoin');
-      const cryptoAmount = (ticketData.amountUSD / (isLtc ? ltcPrice : usdtPrice)).toFixed(isLtc ? 6 : 2);
+      const cryptoAmount = (ticketData.totalAmountWithFee / (isLtc ? ltcPrice : usdtPrice)).toFixed(isLtc ? 6 : 2);
 
       const releaseEmbed = new EmbedBuilder()
         .setColor(0x57F287)
         .setTitle('Payment Released')
         .setDescription(`The payment has been released successfully to the payout address provided!`)
         .addFields(
-          { name: 'Amount', value: `${cryptoAmount} ${isLtc ? 'LTC' : 'USDT'} ($${ticketData.amountUSD.toFixed(2)} USD)`, inline: false },
+          { name: 'Amount', value: `${cryptoAmount} ${isLtc ? 'LTC' : 'USDT'} ($${ticketData.totalAmountWithFee.toFixed(2)} USD)`, inline: false },
           { name: 'Transaction', value: '7c2846...0c4a88', inline: false }
         );
 
@@ -489,6 +581,26 @@ client.on(Events.InteractionCreate, async interaction => {
         embeds: [releaseEmbed, completeEmbed],
         components: [closeRow]
       });
+
+      // Auto log to log channel
+      const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
+      if (logChannel) {
+        const coinSymbol = isLtc ? 'LTC' : 'USDT';
+        const coinEmoji = isLtc ? '🪙' : '🟢';
+        const rate = isLtc ? ltcPrice : usdtPrice;
+        const txId = generateRandomTxId();
+
+        const logEmbed = new EmbedBuilder()
+          .setColor(isLtc ? 0x3498DB : 0x2ECC71)
+          .setTitle(`${coinEmoji} · Trade Completed`)
+          .setDescription(`\`${cryptoAmount}\` **${coinSymbol}** ($\`${ticketData.totalAmountWithFee.toFixed(2)}\` USD)`)
+          .addFields(
+            { name: 'Sender', value: '`Anonymous`', inline: true },
+            { name: 'Receiver', value: '`Anonymous`', inline: true },
+            { name: 'Transaction ID', value: `\`${txId}\``, inline: false }
+          );
+        await logChannel.send({ embeds: [logEmbed] }).catch(err => console.error('Failed to send log:', err));
+      }
 
       setTimeout(async () => {
         try { 
@@ -519,14 +631,14 @@ client.on(Events.InteractionCreate, async interaction => {
 
       const { ltcPrice, usdtPrice } = await getCryptoPrices();
       const isLtc = ticketData.coin.includes('Litecoin');
-      const cryptoAmount = (ticketData.amountUSD / (isLtc ? ltcPrice : usdtPrice)).toFixed(isLtc ? 6 : 2);
+      const cryptoAmount = (ticketData.totalAmountWithFee / (isLtc ? ltcPrice : usdtPrice)).toFixed(isLtc ? 6 : 2);
 
       const refundEmbed = new EmbedBuilder()
         .setColor(0x57F287)
         .setTitle('Refund Processed')
         .setDescription(`The cancellation refund has been sent successfully to the sender's address!`)
         .addFields(
-          { name: 'Refund Amount', value: `${cryptoAmount} ${isLtc ? 'LTC' : 'USDT'} ($${ticketData.amountUSD.toFixed(2)} USD)`, inline: false },
+          { name: 'Refund Amount', value: `${cryptoAmount} ${isLtc ? 'LTC' : 'USDT'} ($${ticketData.totalAmountWithFee.toFixed(2)} USD)`, inline: false },
           { name: 'Transaction', value: 'refund...0c4a88', inline: false }
         );
 
@@ -569,6 +681,76 @@ client.on(Events.InteractionCreate, async interaction => {
     }
   }
 });
+
+async function proceedToInvoice(channel, ticketData) {
+  ticketData.status = 'invoice_ready';
+
+  const { ltcPrice, usdtPrice } = await getCryptoPrices();
+  const isLtc = ticketData.coin.includes('Litecoin');
+  const rate = isLtc ? ltcPrice : usdtPrice;
+  const cryptoAmount = (ticketData.totalAmountWithFee / rate).toFixed(isLtc ? 6 : 2);
+
+  let feeDescription = ticketData.feeUSD > 0 ? `\n• Deal Amount: $${ticketData.amountUSD.toFixed(2)}\n• Fee ($${ticketData.feeUSD.toFixed(2)}): Paid by ${ticketData.feePayerChoice}` : '\n• Fee: FREE';
+
+  const summaryEmbed = new EmbedBuilder()
+    .setColor(0x5865F2)
+    .setTitle('📋 Deal Summary')
+    .setDescription(feeDescription)
+    .addFields(
+      { name: 'Sender', value: `<@${ticketData.roles.sender}>`, inline: false },
+      { name: 'Receiver', value: `<@${ticketData.roles.receiver}>`, inline: false },
+      { name: 'Total Deal Value', value: `$${ticketData.totalAmountWithFee.toFixed(2)}`, inline: false }
+    );
+
+  const invoiceEmbed = new EmbedBuilder()
+    .setColor(0x5865F2)
+    .setTitle('📬 Payment Invoice')
+    .setDescription(`<@${ticketData.roles.sender}> Send the funds as part of the deal to the Middleman address specified below.`)
+    .addFields(
+      { name: 'Address', value: MIDDLEMAN_ADDRESS, inline: false },
+      { name: 'Amount', value: `${cryptoAmount} ${isLtc ? 'LTC' : 'USDT'} ($${ticketData.totalAmountWithFee.toFixed(2)} USD)`, inline: false },
+      { name: 'Exchange Rate', value: `1 ${isLtc ? 'LTC' : 'USDT'} = $${rate.toFixed(2)} USD`, inline: false }
+    );
+
+  const copyRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('copy_details').setLabel('Copy Details').setStyle(ButtonStyle.Secondary)
+  );
+
+  await channel.send({ embeds: [summaryEmbed] });
+  await channel.send({ embeds: [invoiceEmbed], components: [copyRow] });
+
+  const awaitingMsg = await channel.send({ content: '⏳ Awaiting transaction confirmation on network...' });
+
+  setTimeout(async () => {
+    try {
+      await awaitingMsg.delete();
+      const successTxEmbed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('Payment Received')
+        .setDescription('The payment is now secured and verified.')
+        .addFields(
+          { name: 'Amount Received', value: `${cryptoAmount} ${isLtc ? 'LTC' : 'USDT'} ($${ticketData.totalAmountWithFee.toFixed(2)} USD)`, inline: false }
+        );
+
+      const readyEmbed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setDescription(`The receiver (<@${ticketData.roles.receiver}>) may now provide goods to the sender (<@${ticketData.roles.sender}>).\n\nWhen complete, the sender must click 'Release'.`);
+
+      const releaseRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('trigger_release').setLabel('Release').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('trigger_cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary)
+      );
+
+      await channel.send({
+        content: `<@${ticketData.roles.sender}> <@${ticketData.roles.receiver}>`,
+        embeds: [successTxEmbed, readyEmbed],
+        components: [releaseRow]
+      });
+    } catch (error) {
+      console.error('Error handling simulated payment success sequence:', error);
+    }
+  }, 120000);
+}
 
 client.on(Events.MessageCreate, async message => {
   if (message.author.bot) return;
@@ -642,7 +824,7 @@ client.on(Events.MessageCreate, async message => {
     const address = message.content.trim();
     if (address.length > 5) {
       ticketData.receiverCryptoAddress = address;
-      ticketData.status = 'completed';
+      ticketData.status = 'confirming_receiver_address';
 
       const verifyAddressEmbed = new EmbedBuilder()
         .setColor(0x5865F2)
@@ -663,7 +845,7 @@ client.on(Events.MessageCreate, async message => {
     const address = message.content.trim();
     if (address.length > 5) {
       ticketData.senderRefundAddress = address;
-      ticketData.status = 'refund_completed';
+      ticketData.status = 'confirming_refund_address';
 
       const verifyRefundAddressEmbed = new EmbedBuilder()
         .setColor(0x5865F2)
