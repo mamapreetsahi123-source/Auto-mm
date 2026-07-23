@@ -1,0 +1,15 @@
+{
+  "name": "auto-middleman-bot",
+  "version": "1.0.0",
+  "description": "Discord auto middleman panel bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "debug": "^4.4.3",
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.4.5",
+    "node-fetch": "^2.7.0"
+  }
+}
