@@ -179,10 +179,16 @@ client.on(Events.InteractionCreate, async interaction => {
       const ticketNum = Math.floor(100000 + Math.random() * 900000);
 
       try {
+        const targetCategory = await interaction.guild.channels.fetch(TICKET_CATEGORY_ID).catch(() => null);
+        
+        if (!targetCategory || targetCategory.type !== ChannelType.GuildCategory) {
+          return interaction.editReply({ content: '❌ Configuration Error: The specified TICKET_CATEGORY_ID is invalid or is not a category channel.' });
+        }
+
         const ticketChannel = await interaction.guild.channels.create({
           name: `ticket-${ticketNum}`,
           type: ChannelType.GuildText,
-          parent: TICKET_CATEGORY_ID,
+          parent: targetCategory.id,
           permissionOverwrites: [
             { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
             { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
@@ -224,7 +230,7 @@ client.on(Events.InteractionCreate, async interaction => {
         await interaction.editReply({ content: `✅ Ticket channel created successfully: <#${ticketChannel.id}>` });
       } catch (err) {
         console.error('Error creating the ticket channel structure:', err);
-        await interaction.editReply({ content: '❌ Failed to create ticket channel due to insufficient bot permissions or configuration setup.' });
+        await interaction.editReply({ content: `❌ Failed to create ticket channel. Error: ${err.message}` });
       }
       return;
     }
