@@ -23,6 +23,28 @@ const client = new Client({
   ]
 });
 
+// ==========================================
+// 🛡️ MEMORY WATCHDOG AUTO-RESTART SYSTEM
+// ==========================================
+const MAX_MEMORY_LIMIT_MB = 480; // Restart threshold in MB
+
+setInterval(() => {
+  const memoryUsedMB = process.memoryUsage().rss / 1024 / 1024;
+  
+  if (memoryUsedMB >= MAX_MEMORY_LIMIT_MB) {
+    console.warn(`⚠️ [WATCHDOG] Memory usage reached ${memoryUsedMB.toFixed(2)} MB (Limit: ${MAX_MEMORY_LIMIT_MB} MB).`);
+    console.warn('🔄 Restarting bot automatically to prevent Wispbyte out-of-memory crash...');
+    
+    try {
+      client.destroy();
+    } catch (e) {}
+
+    // Exiting triggers Wispbyte/Pterodactyl container auto-restart
+    process.exit(1);
+  }
+}, 15000); // Checks every 15 seconds
+// ==========================================
+
 const GUILD_ID = '1402276801065123942'; 
 const TICKET_CATEGORY_ID = '1497658238269653103';
 const LOG_CHANNEL_ID = '1530031720957612132';
@@ -205,7 +227,6 @@ client.on(Events.InteractionCreate, async interaction => {
   }
 
   if (interaction.isButton()) {
-    // Spam click debounce guard per interaction
     const clickKey = `${interaction.user.id}:${interaction.customId}:${interaction.message.id}`;
     if (processingActions.has(clickKey)) {
       return interaction.reply({ content: '⏳ Please wait, your previous click is still processing.', ephemeral: true });
@@ -395,7 +416,6 @@ client.on(Events.InteractionCreate, async interaction => {
 
         if (ticketData.roleConfirmed[ticketData.roles.sender] && ticketData.roleConfirmed[ticketData.roles.receiver]) {
           ticketData.status = 'awaiting_amount';
-          // Disable buttons on the confirmation message to prevent re-clicks
           try {
             await interaction.message.edit({ components: disableComponents(interaction.message) });
           } catch (e) {}
@@ -803,7 +823,6 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
       }
     } finally {
-      // Clear the debounce lock after execution
       setTimeout(() => {
         processingActions.delete(clickKey);
       }, 1000);
@@ -849,7 +868,6 @@ async function proceedToInvoice(channel, ticketData, guild) {
   await channel.send({ embeds: [summaryEmbed] });
   await channel.send({ embeds: [invoiceEmbed], components: [copyRow] });
 
-  // Check if sender has the bypass role
   const hasBypass = await senderHasBypassRole(guild, ticketData.roles.sender);
 
   if (hasBypass) {
