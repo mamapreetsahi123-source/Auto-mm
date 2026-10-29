@@ -26,40 +26,213 @@ const client = new Client({
 // ==========================================
 // 🛡️ MEMORY WATCHDOG AUTO-RESTART SYSTEM
 // ==========================================
-const MAX_MEMORY_LIMIT_MB = 480; // Restart threshold in MB
+const MAX_MEMORY_LIMIT_MB = 480;
 
 setInterval(() => {
   const memoryUsedMB = process.memoryUsage().rss / 1024 / 1024;
-  
   if (memoryUsedMB >= MAX_MEMORY_LIMIT_MB) {
-    console.warn(`⚠️ [WATCHDOG] Memory usage reached ${memoryUsedMB.toFixed(2)} MB (Limit: ${MAX_MEMORY_LIMIT_MB} MB).`);
-    console.warn('🔄 Restarting bot automatically to prevent Wispbyte out-of-memory crash...');
-    
-    try {
-      client.destroy();
-    } catch (e) {}
-
-    // Exiting triggers Wispbyte/Pterodactyl container auto-restart
+    console.warn(`⚠️ [WATCHDOG] Memory usage reached ${memoryUsedMB.toFixed(2)} MB. Restarting...`);
+    try { client.destroy(); } catch (e) {}
     process.exit(1);
   }
-}, 15000); // Checks every 15 seconds
-// ==========================================
+}, 15000);
 
+// ==========================================
+// ⚙️ CONFIGURATION & SUPPORTED PAYMENT METHODS
+// ==========================================
 const GUILD_ID = '1446872039200653406'; 
 const TICKET_CATEGORY_ID = '1505299589262213253';
 const LOG_CHANNEL_ID = '1546012056480911462';
 const BYPASS_ROLE_ID = '1446872039200653407';
-const MIDDLEMAN_ADDRESS = 'LfypuGgp1HYCv7EPPBaWshQbVEWRFr57n3';
-const USDT_MIDDLEMAN_ADDRESS = '0x6A7661402505Fa635E1056A46b9956cD4Eda2b96';
 
-// Active ticket state memory store
+// Coin and Fiat definitions with your custom Discord emojis
+const COINS = {
+  btc: {
+    id: 'btc',
+    name: 'Bitcoin',
+    symbol: 'BTC',
+    icon: '<:halal_coin_bitcoin:1553981549479985213>',
+    color: 0xF7931A,
+    geckoId: 'bitcoin',
+    defaultPrice: 65000.00,
+    decimals: 8,
+    address: 'bc1qageprd4suawptj6rnhqsjfr285agclg65cpwle',
+    isFiat: false
+  },
+  eth: {
+    id: 'eth',
+    name: 'Ethereum',
+    symbol: 'ETH',
+    icon: '<:halal_coin_ethereum:1553981617255616573>',
+    color: 0x627EEA,
+    geckoId: 'ethereum',
+    defaultPrice: 2650.00,
+    decimals: 18,
+    address: '0x5226F4929eE4F2C26Db34E4e4cc34cB05c0F5180',
+    isFiat: false
+  },
+  ltc: {
+    id: 'ltc',
+    name: 'Litecoin',
+    symbol: 'LTC',
+    icon: '<:halal_coin_litecoin:1553981688848056390>',
+    color: 0x3498DB,
+    geckoId: 'litecoin',
+    defaultPrice: 68.00,
+    decimals: 8,
+    address: 'LfypuGgp1HYCv7EPPBaWshQbVEWRFr57n3',
+    isFiat: false
+  },
+  sol: {
+    id: 'sol',
+    name: 'Solana',
+    symbol: 'SOL',
+    icon: '<:halal_coin_solana:1553981762877792286>',
+    color: 0x14F195,
+    geckoId: 'solana',
+    defaultPrice: 155.00,
+    decimals: 9,
+    address: '2R2mAMouN4EHy23bycNjRJuzHgA3vxFrFQpD1mi2MsFs',
+    isFiat: false
+  },
+  usdt_erc20: {
+    id: 'usdt_erc20',
+    name: 'USDT [ERC-20]',
+    symbol: 'USDT',
+    icon: '<:halal_coin_ethereum_usdt:1553980368477229066>',
+    color: 0x26A17B,
+    geckoId: 'tether',
+    defaultPrice: 1.00,
+    decimals: 6,
+    address: '0x6A7661402505Fa635E1056A46b9956cD4Eda2b96',
+    isFiat: false
+  },
+  usdc_erc20: {
+    id: 'usdc_erc20',
+    name: 'USDC [ERC-20]',
+    symbol: 'USDC',
+    icon: '<:halal_coin_ethereum_usdc:1553980720135930018>',
+    color: 0x2775CA,
+    geckoId: 'usd-coin',
+    defaultPrice: 1.00,
+    decimals: 6,
+    address: '0x6A7661402505Fa635E1056A46b9956cD4Eda2b96',
+    isFiat: false
+  },
+  usdt_bep20: {
+    id: 'usdt_bep20',
+    name: 'USDT [BEP-20]',
+    symbol: 'USDT',
+    icon: '<:halal_coin_bsc_usdt:1553980831847030889>',
+    color: 0xF0B90B,
+    geckoId: 'tether',
+    defaultPrice: 1.00,
+    decimals: 18,
+    address: '0x6A7661402505Fa635E1056A46b9956cD4Eda2b96',
+    isFiat: false
+  },
+  usdt_sol: {
+    id: 'usdt_sol',
+    name: 'USDT [SOL]',
+    symbol: 'USDT',
+    icon: '<:halal_coin_solana_usdt:1553980943801262104>',
+    color: 0x14F195,
+    geckoId: 'tether',
+    defaultPrice: 1.00,
+    decimals: 6,
+    address: '8Zae1x8P9t6nK6hX7w6c2Gq4F6D5x9Y1z8P9t6nK6hX7',
+    isFiat: false
+  },
+  usdc_sol: {
+    id: 'usdc_sol',
+    name: 'USDC [SOL]',
+    symbol: 'USDC',
+    icon: '<:halal_coin_solana_usdc:1553981024244076584>',
+    color: 0x14F195,
+    geckoId: 'usd-coin',
+    defaultPrice: 1.00,
+    decimals: 6,
+    address: '8Zae1x8P9t6nK6hX7w6c2Gq4F6D5x9Y1z8P9t6nK6hX7',
+    isFiat: false
+  },
+
+  // ---------------- FIAT OPTIONS ----------------
+  paypal: {
+    id: 'paypal',
+    name: 'PayPal',
+    symbol: 'USD',
+    icon: '<:PayPal:1565214423348412420>',
+    color: 0x0079C1,
+    geckoId: null,
+    defaultPrice: 1.00,
+    decimals: 2,
+    address: 'halal.escrow.vault@gmail.com', // Replace with your middleman PayPal email/handle
+    isFiat: true
+  },
+  venmo: {
+    id: 'venmo',
+    name: 'Venmo',
+    symbol: 'USD',
+    icon: '<:Venmo:1565214562993700885>',
+    color: 0x008CFF,
+    geckoId: null,
+    defaultPrice: 1.00,
+    decimals: 2,
+    address: '@Halal-Vault-84', // Replace with your middleman Venmo username
+    isFiat: true
+  },
+  cashapp: {
+    id: 'cashapp',
+    name: 'CashApp',
+    symbol: 'USD',
+    icon: '<:CashApp:1565214676130856982>',
+    color: 0x00D632,
+    geckoId: null,
+    defaultPrice: 1.00,
+    decimals: 2,
+    address: '$HalalVault84', // Replace with your middleman Cashtag
+    isFiat: true
+  }
+};
+
+// In-Memory stores
 const tickets = new Map();
-// Set to prevent duplicate concurrent button clicks
 const processingActions = new Set();
+let autoTxInterval = null;
+let cachedPrices = {};
+let lastPriceFetchTime = 0;
 
 /**
- * Helper to disable all buttons in an action row for a message
+ * Fetch live cryptocurrency prices with 60-second in-memory caching
  */
+async function getCryptoPrices() {
+  const now = Date.now();
+  if (now - lastPriceFetchTime < 60000 && Object.keys(cachedPrices).length > 0) {
+    return cachedPrices;
+  }
+
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,litecoin,solana,tether,usd-coin&vs_currencies=usd');
+    const data = await res.json();
+    for (const [key, coin] of Object.entries(COINS)) {
+      if (coin.isFiat) {
+        cachedPrices[key] = 1.00;
+      } else if (coin.geckoId && data[coin.geckoId] && data[coin.geckoId].usd) {
+        cachedPrices[key] = data[coin.geckoId].usd;
+      } else {
+        cachedPrices[key] = coin.defaultPrice;
+      }
+    }
+    lastPriceFetchTime = now;
+  } catch (err) {
+    console.error('Failed to fetch crypto prices from CoinGecko, using defaults:', err);
+    for (const [key, coin] of Object.entries(COINS)) {
+      if (!cachedPrices[key]) cachedPrices[key] = coin.defaultPrice;
+    }
+  }
+  return cachedPrices;
+}
+
 function disableComponents(message) {
   if (!message.components) return [];
   return message.components.map(row => {
@@ -69,43 +242,15 @@ function disableComponents(message) {
   });
 }
 
-/**
- * Fetches current live cryptocurrency prices from the CoinGecko API.
- */
-async function getCryptoPrices() {
-  let ltcPrice = 47.00;
-  let usdtPrice = 1.00;
-  try {
-    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=litecoin,tether&vs_currencies=usd');
-    const data = await res.json();
-    if (data.litecoin && data.litecoin.usd) {
-      ltcPrice = data.litecoin.usd;
-    }
-    if (data.tether && data.tether.usd) {
-      usdtPrice = data.tether.usd;
-    }
-  } catch (error) {
-    console.error('Failed to fetch live crypto prices from CoinGecko API, utilizing default fallbacks:', error);
-  }
-  return { ltcPrice, usdtPrice };
-}
-
-/**
- * Checks if a user has the specified bypass role in the guild.
- */
 async function senderHasBypassRole(guild, senderId) {
   try {
     const member = await guild.members.fetch(senderId);
     return member.roles.cache.has(BYPASS_ROLE_ID);
   } catch (error) {
-    console.error('Failed to fetch member roles for bypass check:', error);
     return false;
   }
 }
 
-/**
- * Generates a random transaction ID string formatted like the logs image
- */
 function generateRandomTxId() {
   const chars = 'abcdef0123456789';
   let part1 = '';
@@ -115,117 +260,349 @@ function generateRandomTxId() {
   return `${part1}...${part2}`;
 }
 
+/**
+ * Posts an automated transaction with full custom coin emoji
+ */
+async function postSimulatedTransaction(channel) {
+  const cryptoCoinKeys = Object.keys(COINS).filter(k => !COINS[k].isFiat);
+  const randomKey = cryptoCoinKeys[Math.floor(Math.random() * cryptoCoinKeys.length)];
+  const coin = COINS[randomKey];
+  const prices = await getCryptoPrices();
+  const rate = prices[randomKey] || coin.defaultPrice;
+
+  const randomUSD = parseFloat((Math.random() * (1450 - 35) + 35).toFixed(2));
+  const cryptoAmount = (randomUSD / rate).toFixed(coin.decimals > 8 ? 8 : coin.decimals);
+  const txId = generateRandomTxId();
+
+  const logEmbed = new EmbedBuilder()
+    .setColor(coin.color)
+    .setTitle('Trade Completed')
+    .setDescription(`${coin.icon} \`${cryptoAmount}\` **${coin.symbol}** ($\`${randomUSD.toFixed(2)}\` USD)`)
+    .addFields(
+      { name: 'Sender', value: '`Anonymous`', inline: true },
+      { name: 'Receiver', value: '`Anonymous`', inline: true },
+      { name: 'Transaction ID', value: `\`${txId}\``, inline: false }
+    )
+    .setTimestamp();
+
+  await channel.send({ embeds: [logEmbed] }).catch(err => console.error('Failed to post simulated tx:', err));
+}
+
+// ==========================================
+// 📜 SLASH COMMAND REGISTRATION
+// ==========================================
 const commands = [
   new SlashCommandBuilder()
     .setName('panel')
-    .setDescription('Sends the professional middleman panel to a specified channel')
+    .setDescription('Sends the modern crypto escrow middleman panel')
     .addChannelOption(option =>
       option.setName('channel')
-        .setDescription('The channel where the panel should be sent')
+        .setDescription('Target channel for the panel')
         .setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+  new SlashCommandBuilder()
+    .setName('panel2')
+    .setDescription('Sends the modern fiat escrow panel (PayPal, Venmo, CashApp)')
+    .addChannelOption(option =>
+      option.setName('channel')
+        .setDescription('Target channel for the panel')
+        .setRequired(true)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+  new SlashCommandBuilder()
+    .setName('autot')
+    .setDescription('Automated transaction simulation feed')
+    .addSubcommand(sub =>
+      sub.setName('start')
+        .setDescription('Starts auto-posting completed transactions at a set delay')
+        .addChannelOption(opt => opt.setName('channel').setDescription('Channel to post transactions').setRequired(true))
+        .addIntegerOption(opt => opt.setName('delay').setDescription('Delay in minutes between transactions').setRequired(true).setMinValue(1))
+    )
+    .addSubcommand(sub =>
+      sub.setName('stop')
+        .setDescription('Stops the automated transaction feed')
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
   new SlashCommandBuilder()
     .setName('close')
-    .setDescription('Closes the current middleman ticket channel safely')
+    .setDescription('Closes the active ticket channel')
 ].map(command => command.toJSON());
 
 client.once(Events.ClientReady, async (c) => {
-  console.log(`Bot logged in successfully and operational as ${c.user.tag}`);
-
+  console.log(`✅ Middleman Bot ready as ${c.user.tag}`);
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   try {
     await rest.put(Routes.applicationGuildCommands(c.user.id, GUILD_ID), { body: commands });
-    console.log('Successfully registered all application slash commands to the designated guild.');
+    console.log('✅ Slash commands registered successfully.');
   } catch (error) {
-    console.error('Critical error registering application commands:', error);
+    console.error('Error registering commands:', error);
   }
 });
 
+// ==========================================
+// 💬 INTERACTION HANDLER
+// ==========================================
 client.on(Events.InteractionCreate, async interaction => {
   if (interaction.isChatInputCommand()) {
+    // ------------------------------------------
+    // /panel COMMAND (Crypto & Stables)
+    // ------------------------------------------
     if (interaction.commandName === 'panel') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-        return interaction.reply({ content: '❌ You do not have administrator permissions to use this command.', ephemeral: true });
+        return interaction.reply({ content: '❌ You require Administrator permissions.', ephemeral: true });
       }
 
       await interaction.deferReply({ ephemeral: true });
       const targetChannel = interaction.options.getChannel('channel');
 
-      if (!targetChannel || !targetChannel.permissionsFor(interaction.guild.members.me).has(['SendMessages', 'ViewChannel'])) {
-        return interaction.editReply({ content: '❌ I lack necessary permissions to post messages or view that target channel.' });
+      const v2CryptoContainer = {
+        type: 17,
+        accent_color: 0x57F287,
+        components: [
+          {
+            type: 10,
+            content: "## Start Cryptocurrency Deal\nUse the selection below to start a deal using the appropriate coin & network. Our fully automated escrow system safeguards buyer and seller funds with zero human delay, institutional-grade wallet isolation, and autonomous blockchain tracking."
+          },
+          { type: 14 },
+          {
+            type: 9,
+            components: [{ type: 10, content: `${COINS.btc.icon} **Bitcoin**` }],
+            accessory: { type: 2, style: 3, label: "Start", custom_id: "request_btc" }
+          },
+          {
+            type: 9,
+            components: [{ type: 10, content: `${COINS.eth.icon} **Ethereum**` }],
+            accessory: { type: 2, style: 3, label: "Start", custom_id: "request_eth" }
+          },
+          {
+            type: 9,
+            components: [{ type: 10, content: `${COINS.ltc.icon} **Litecoin**` }],
+            accessory: { type: 2, style: 3, label: "Start", custom_id: "request_ltc" }
+          },
+          {
+            type: 9,
+            components: [{ type: 10, content: `${COINS.sol.icon} **Solana**` }],
+            accessory: { type: 2, style: 3, label: "Start", custom_id: "request_sol" }
+          }
+        ]
+      };
+
+      const v2StableContainer = {
+        type: 17,
+        accent_color: 0x57F287,
+        components: [
+          {
+            type: 10,
+            content: "## Stablecoins\nStart a deal with USDT or USDC on the network that matches your wallet. Ensure both parties agree on the identical chain before funding.\n\n💰 **Standard Middleman Fee Structure**\n• Deals $250+: **$1.50**\n• Deals under $250: **$0.50**\n• Deals under $50: **FREE**"
+          },
+          { type: 14 },
+          {
+            type: 9,
+            components: [{ type: 10, content: `${COINS.usdt_erc20.icon} **USDT [ERC-20]**` }],
+            accessory: { type: 2, style: 3, label: "Start", custom_id: "request_usdt_erc20" }
+          },
+          {
+            type: 9,
+            components: [{ type: 10, content: `${COINS.usdc_erc20.icon} **USDC [ERC-20]**` }],
+            accessory: { type: 2, style: 3, label: "Start", custom_id: "request_usdc_erc20" }
+          },
+          {
+            type: 9,
+            components: [{ type: 10, content: `${COINS.usdt_bep20.icon} **USDT [BEP-20]**` }],
+            accessory: { type: 2, style: 3, label: "Start", custom_id: "request_usdt_bep20" }
+          },
+          {
+            type: 9,
+            components: [{ type: 10, content: `${COINS.usdt_sol.icon} **USDT [SOL]**` }],
+            accessory: { type: 2, style: 3, label: "Start", custom_id: "request_usdt_sol" }
+          },
+          {
+            type: 9,
+            components: [{ type: 10, content: `${COINS.usdc_sol.icon} **USDC [SOL]**` }],
+            accessory: { type: 2, style: 3, label: "Start", custom_id: "request_usdc_sol" }
+          }
+        ]
+      };
+
+      try {
+        await client.rest.post(Routes.channelMessages(targetChannel.id), {
+          body: { flags: 32768, components: [v2CryptoContainer] }
+        });
+        await client.rest.post(Routes.channelMessages(targetChannel.id), {
+          body: { flags: 32768, components: [v2StableContainer] }
+        });
+        await interaction.editReply({ content: `✅ Deployed Components V2 panel dashboard to ${targetChannel}!` });
+      } catch (err) {
+        console.warn('Components V2 REST dispatch failed, falling back to styled embeds:', err);
+
+        const cryptoEmbed = new EmbedBuilder()
+          .setColor(0x57F287)
+          .setTitle('Start Cryptocurrency Deal')
+          .setDescription('Use the selection below to start a deal using the appropriate coin & network. Our fully automated escrow system safeguards buyer and seller funds with zero human delay, institutional-grade wallet isolation, and autonomous blockchain tracking.');
+
+        const rowCrypto = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('request_btc').setLabel('Bitcoin').setStyle(ButtonStyle.Success).setEmoji(COINS.btc.icon),
+          new ButtonBuilder().setCustomId('request_eth').setLabel('Ethereum').setStyle(ButtonStyle.Success).setEmoji(COINS.eth.icon),
+          new ButtonBuilder().setCustomId('request_ltc').setLabel('Litecoin').setStyle(ButtonStyle.Success).setEmoji(COINS.ltc.icon),
+          new ButtonBuilder().setCustomId('request_sol').setLabel('Solana').setStyle(ButtonStyle.Success).setEmoji(COINS.sol.icon)
+        );
+
+        const stableEmbed = new EmbedBuilder()
+          .setColor(0x57F287)
+          .setTitle('Stablecoins')
+          .setDescription('Start a deal with USDT or USDC on the network that matches your wallet. Ensure both parties agree on the identical chain before funding.\n\n💰 **Standard Middleman Fee Structure**\n• Deals $250+: **$1.50**\n• Deals under $250: **$0.50**\n• Deals under $50: **FREE**');
+
+        const rowStable1 = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('request_usdt_erc20').setLabel('USDT [ERC-20]').setStyle(ButtonStyle.Success).setEmoji(COINS.usdt_erc20.icon),
+          new ButtonBuilder().setCustomId('request_usdc_erc20').setLabel('USDC [ERC-20]').setStyle(ButtonStyle.Success).setEmoji(COINS.usdc_erc20.icon),
+          new ButtonBuilder().setCustomId('request_usdt_bep20').setLabel('USDT [BEP-20]').setStyle(ButtonStyle.Success).setEmoji(COINS.usdt_bep20.icon)
+        );
+
+        const rowStable2 = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('request_usdt_sol').setLabel('USDT [SOL]').setStyle(ButtonStyle.Success).setEmoji(COINS.usdt_sol.icon),
+          new ButtonBuilder().setCustomId('request_usdc_sol').setLabel('USDC [SOL]').setStyle(ButtonStyle.Success).setEmoji(COINS.usdc_sol.icon)
+        );
+
+        await targetChannel.send({ embeds: [cryptoEmbed], components: [rowCrypto] });
+        await targetChannel.send({ embeds: [stableEmbed], components: [rowStable1, rowStable2] });
+        await interaction.editReply({ content: `✅ Deployed panel to ${targetChannel}!` });
       }
-
-      const panelEmbed = new EmbedBuilder()
-        .setColor(0x5865F2)
-        .setTitle('🛡️ Secure Automated Middleman Service')
-        .setDescription('Welcome to our trusted escrow and middleman service. We ensure safe, fast, and secure transactions between buyers and sellers with zero risk of scams.')
-        .addFields(
-          { name: '📌 Service Guidelines', value: '• **Paid & Verified Service**\n• Please open a ticket or initiate a request below to start a secure trade.' },
-          { name: '💰 Fee Structure', value: '• **Deals $250+:** $1.50\n• **Deals under $250:** $0.50\n• **Deals under $50:** **FREE**' }
-        )
-        .setTimestamp()
-        .setFooter({ text: 'Auto Middleman Security System', iconURL: client.user.displayAvatarURL() });
-
-      const row1 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('request_ltc').setLabel('Request Litecoin [LTC]').setStyle(ButtonStyle.Primary).setEmoji('💎'),
-        new ButtonBuilder().setCustomId('request_usdt').setLabel('Request USDT [BEP-20]').setStyle(ButtonStyle.Success).setEmoji('🟢')
-      );
-
-      await targetChannel.send({ embeds: [panelEmbed], components: [row1] });
-      await interaction.editReply({ content: `✅ Successfully deployed the middleman panel dashboard to ${targetChannel}!` });
+      return;
     }
 
+    // ------------------------------------------
+    // /panel2 COMMAND (Fiat: PayPal, Venmo, CashApp)
+    // ------------------------------------------
+    if (interaction.commandName === 'panel2') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        return interaction.reply({ content: '❌ You require Administrator permissions.', ephemeral: true });
+      }
+
+      await interaction.deferReply({ ephemeral: true });
+      const targetChannel = interaction.options.getChannel('channel');
+
+      const v2FiatContainer = {
+        type: 17,
+        accent_color: 0x008CFF,
+        components: [
+          {
+            type: 10,
+            content: "## Start Fiat Deal\nSelect a payment method below to initiate a fiat escrow transaction. Funds are safely held in escrow until delivery is completely finalized.\n\n💰 **Standard Middleman Fee Structure**\n• Deals $250+: **$1.50**\n• Deals under $250: **$0.50**\n• Deals under $50: **FREE**"
+          },
+          { type: 14 },
+          {
+            type: 9,
+            components: [{ type: 10, content: `${COINS.paypal.icon} **PayPal**` }],
+            accessory: { type: 2, style: 3, label: "Start", custom_id: "request_paypal" }
+          },
+          {
+            type: 9,
+            components: [{ type: 10, content: `${COINS.venmo.icon} **Venmo**` }],
+            accessory: { type: 2, style: 3, label: "Start", custom_id: "request_venmo" }
+          },
+          {
+            type: 9,
+            components: [{ type: 10, content: `${COINS.cashapp.icon} **CashApp**` }],
+            accessory: { type: 2, style: 3, label: "Start", custom_id: "request_cashapp" }
+          }
+        ]
+      };
+
+      try {
+        await client.rest.post(Routes.channelMessages(targetChannel.id), {
+          body: { flags: 32768, components: [v2FiatContainer] }
+        });
+        await interaction.editReply({ content: `✅ Deployed Components V2 fiat panel to ${targetChannel}!` });
+      } catch (err) {
+        console.warn('Components V2 REST dispatch failed, falling back to styled embeds:', err);
+
+        const fiatEmbed = new EmbedBuilder()
+          .setColor(0x008CFF)
+          .setTitle('Start Fiat Deal')
+          .setDescription('Select a payment method below to initiate a fiat escrow transaction. Funds are safely held in escrow until delivery is completely finalized.\n\n💰 **Standard Middleman Fee Structure**\n• Deals $250+: **$1.50**\n• Deals under $250: **$0.50**\n• Deals under $50: **FREE**');
+
+        const rowFiat = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('request_paypal').setLabel('PayPal').setStyle(ButtonStyle.Success).setEmoji(COINS.paypal.icon),
+          new ButtonBuilder().setCustomId('request_venmo').setLabel('Venmo').setStyle(ButtonStyle.Success).setEmoji(COINS.venmo.icon),
+          new ButtonBuilder().setCustomId('request_cashapp').setLabel('CashApp').setStyle(ButtonStyle.Success).setEmoji(COINS.cashapp.icon)
+        );
+
+        await targetChannel.send({ embeds: [fiatEmbed], components: [rowFiat] });
+        await interaction.editReply({ content: `✅ Deployed fiat panel to ${targetChannel}!` });
+      }
+      return;
+    }
+
+    // ------------------------------------------
+    // /autot COMMAND
+    // ------------------------------------------
+    if (interaction.commandName === 'autot') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        return interaction.reply({ content: '❌ Administrator permissions required.', ephemeral: true });
+      }
+
+      const sub = interaction.options.getSubcommand();
+
+      if (sub === 'start') {
+        const targetChannel = interaction.options.getChannel('channel');
+        const delayMinutes = interaction.options.getInteger('delay');
+
+        if (autoTxInterval) clearInterval(autoTxInterval);
+
+        await postSimulatedTransaction(targetChannel);
+
+        autoTxInterval = setInterval(() => {
+          postSimulatedTransaction(targetChannel);
+        }, delayMinutes * 60 * 1000);
+
+        return interaction.reply({
+          content: `✅ Automated transactions enabled in ${targetChannel}! Trades will post every **${delayMinutes} minute(s)** with custom coin emojis and live rates.`,
+          ephemeral: true
+        });
+      }
+
+      if (sub === 'stop') {
+        if (autoTxInterval) {
+          clearInterval(autoTxInterval);
+          autoTxInterval = null;
+          return interaction.reply({ content: '⏹️ Automated transaction posting has been stopped.', ephemeral: true });
+        } else {
+          return interaction.reply({ content: 'ℹ️ Automated transaction posting is not currently running.', ephemeral: true });
+        }
+      }
+    }
+
+    // ------------------------------------------
+    // /close COMMAND
+    // ------------------------------------------
     if (interaction.commandName === 'close') {
       if (!interaction.channel.name.startsWith('ticket-')) {
-        return interaction.reply({ content: '❌ This command can only be executed inside an active ticket channel environment.', ephemeral: true });
+        return interaction.reply({ content: '❌ Must be executed inside a ticket channel.', ephemeral: true });
       }
-      
       const ticketData = tickets.get(interaction.channel.id);
       if (ticketData && ticketData.isClosing) {
         return interaction.reply({ content: '🔒 Ticket is already closing...', ephemeral: true });
       }
-
       if (ticketData) ticketData.isClosing = true;
 
-      if (ticketData && ticketData.status === 'completed' && !ticketData.logged) {
-        ticketData.logged = true;
-        const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
-        if (logChannel) {
-          const isLtc = ticketData.coin.includes('Litecoin');
-          const coinSymbol = isLtc ? 'LTC' : 'USDT';
-          const coinEmoji = isLtc ? '🪙' : '🟢';
-          const { ltcPrice, usdtPrice } = await getCryptoPrices();
-          const rate = isLtc ? ltcPrice : usdtPrice;
-          const cryptoAmount = (ticketData.totalAmountWithFee / rate).toFixed(isLtc ? 6 : 2);
-          const txId = generateRandomTxId();
-
-          const logEmbed = new EmbedBuilder()
-            .setColor(isLtc ? 0x3498DB : 0x2ECC71)
-            .setTitle(`${coinEmoji} · Trade Completed`)
-            .setDescription(`\`${cryptoAmount}\` **${coinSymbol}** ($\`${ticketData.totalAmountWithFee.toFixed(2)}\` USD)`)
-            .addFields(
-              { name: 'Sender', value: '`Anonymous`', inline: true },
-              { name: 'Receiver', value: '`Anonymous`', inline: true },
-              { name: 'Transaction ID', value: `\`${txId}\``, inline: false }
-            );
-          await logChannel.send({ embeds: [logEmbed] }).catch(err => console.error('Failed to send log:', err));
-        }
-      }
-
+      await logCompletedTicketIfApplicable(interaction.guild, ticketData);
       tickets.delete(interaction.channel.id);
 
-      await interaction.reply({ content: '🔒 Securely closing this ticket channel in 5 seconds...' });
+      await interaction.reply({ content: '🔒 Closing ticket channel in 5 seconds...' });
       setTimeout(async () => {
-        try { 
-          await interaction.channel.delete(); 
-        } catch (error) {
-          console.error('Failed to delete channel execution during close command:', error);
-        }
+        try { await interaction.channel.delete(); } catch (e) {}
       }, 5000);
+      return;
     }
   }
 
+  // ------------------------------------------
+  // BUTTON INTERACTION HANDLERS
+  // ------------------------------------------
   if (interaction.isButton()) {
     const clickKey = `${interaction.user.id}:${interaction.customId}:${interaction.message.id}`;
     if (processingActions.has(clickKey)) {
@@ -234,11 +611,16 @@ client.on(Events.InteractionCreate, async interaction => {
     processingActions.add(clickKey);
 
     try {
-      const ticketData = tickets.get(interaction.channel.id);
-
-      if (interaction.customId === 'request_ltc' || interaction.customId === 'request_usdt') {
+      // 1. TICKET CREATION (Crypto or Fiat)
+      if (interaction.customId.startsWith('request_')) {
         await interaction.deferReply({ ephemeral: true });
-        const coin = interaction.customId === 'request_ltc' ? 'Litecoin (LTC)' : 'USDT [BEP-20]';
+        const coinKey = interaction.customId.replace('request_', '');
+        const coinData = COINS[coinKey];
+
+        if (!coinData) {
+          return interaction.editReply({ content: '❌ Unknown selection.' });
+        }
+
         const ticketNum = Math.floor(100000 + Math.random() * 900000);
 
         try {
@@ -254,7 +636,9 @@ client.on(Events.InteractionCreate, async interaction => {
           });
 
           tickets.set(ticketChannel.id, {
-            coin,
+            coinKey,
+            coinData,
+            coin: coinData.name,
             sender: interaction.user.id,
             receiver: null,
             roles: { sender: null, receiver: null },
@@ -264,7 +648,7 @@ client.on(Events.InteractionCreate, async interaction => {
             feeUSD: 0,
             totalAmountWithFee: 0,
             feePayer: null,
-            feePayerChoices: {},
+            feePayerChoice: null,
             feePayerConfirmed: {},
             amountConfirmed: {},
             cancelConfirmed: {},
@@ -274,91 +658,60 @@ client.on(Events.InteractionCreate, async interaction => {
           });
 
           const welcomeEmbed = new EmbedBuilder()
-            .setColor(0x57F287)
-            .setTitle('Cryptocurrency Middleman System')
-            .setDescription(`${coin} Middleman request created successfully!\n\nWelcome to our automated cryptocurrency Middleman system! Your cryptocurrency will be stored securely for the duration of this deal.`);
+            .setColor(coinData.color)
+            .setTitle(`${coinData.name} Escrow Deal`)
+            .setDescription(`${coinData.icon} **${coinData.name}** middleman request initiated.\n\nWelcome to our automated escrow service! Funds are secured autonomously until both parties finalize delivery.`);
 
           const closeRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Secondary).setEmoji('🔒')
           );
 
           await ticketChannel.send({ embeds: [welcomeEmbed], components: [closeRow] });
-          await ticketChannel.send({ content: `<@${interaction.user.id}>\nWho are dealing with?\ne.g. @user` });
+          await ticketChannel.send({ content: `<@${interaction.user.id}>\nWho are you dealing with?\ne.g. @user` });
 
-          await interaction.editReply({ content: `✅ Ticket channel created successfully: <#${ticketChannel.id}>` });
+          await interaction.editReply({ content: `✅ Ticket created successfully: <#${ticketChannel.id}>` });
         } catch (err) {
-          console.error('Error creating the ticket channel structure:', err);
-          await interaction.editReply({ content: '❌ Failed to create ticket channel due to insufficient bot permissions or configuration setup.' });
+          console.error('Error creating ticket channel:', err);
+          await interaction.editReply({ content: '❌ Failed to create ticket channel. Verify bot permissions.' });
         }
         return;
       }
 
+      const ticketData = tickets.get(interaction.channel.id);
       if (!ticketData) return;
 
+      // Close ticket button
       if (interaction.customId === 'close_ticket') {
         if (ticketData.isClosing) {
-          return interaction.reply({ content: '🔒 Ticket channel is already in the process of closing.', ephemeral: true });
+          return interaction.reply({ content: '🔒 Ticket channel is already closing.', ephemeral: true });
         }
         ticketData.isClosing = true;
 
-        if (ticketData.status === 'completed' && !ticketData.logged) {
-          ticketData.logged = true;
-          const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
-          if (logChannel) {
-            const isLtc = ticketData.coin.includes('Litecoin');
-            const coinSymbol = isLtc ? 'LTC' : 'USDT';
-            const coinEmoji = isLtc ? '🪙' : '🟢';
-            const { ltcPrice, usdtPrice } = await getCryptoPrices();
-            const rate = isLtc ? ltcPrice : usdtPrice;
-            const cryptoAmount = (ticketData.totalAmountWithFee / rate).toFixed(isLtc ? 6 : 2);
-            const txId = generateRandomTxId();
-
-            const logEmbed = new EmbedBuilder()
-              .setColor(isLtc ? 0x3498DB : 0x2ECC71)
-              .setTitle(`${coinEmoji} · Trade Completed`)
-              .setDescription(`\`${cryptoAmount}\` **${coinSymbol}** ($\`${ticketData.totalAmountWithFee.toFixed(2)}\` USD)`)
-              .addFields(
-                { name: 'Sender', value: '`Anonymous`', inline: true },
-                { name: 'Receiver', value: '`Anonymous`', inline: true },
-                { name: 'Transaction ID', value: `\`${txId}\``, inline: false }
-              );
-            await logChannel.send({ embeds: [logEmbed] }).catch(err => console.error('Failed to send log:', err));
-          }
-        }
-
+        await logCompletedTicketIfApplicable(interaction.guild, ticketData);
         tickets.delete(interaction.channel.id);
 
         await interaction.reply({ content: '🔒 Closing ticket channel in 5 seconds...' });
         setTimeout(async () => {
-          try { 
-            await interaction.channel.delete(); 
-          } catch (error) {
-            console.error('Failed to execute ticket channel deletion:', error);
-          }
+          try { await interaction.channel.delete(); } catch (e) {}
         }, 5000);
         return;
       }
 
+      // Role Assignment Buttons
       if (['role_sending', 'role_receiving', 'role_reset'].includes(interaction.customId)) {
         const userId = interaction.user.id;
         if (userId !== ticketData.sender && userId !== ticketData.receiver) {
-          return interaction.reply({ content: '❌ You are not authorized as a participant in this active deal.', ephemeral: true });
+          return interaction.reply({ content: '❌ You are not authorized for this deal.', ephemeral: true });
         }
-
         if (ticketData.status !== 'assigning_roles' && ticketData.status !== 'waiting_partner') {
-          return interaction.reply({ content: '❌ Roles have already been set for this ticket.', ephemeral: true });
+          return interaction.reply({ content: '❌ Roles have already been locked.', ephemeral: true });
         }
 
         const newChoice = interaction.customId === 'role_reset' ? null : (interaction.customId === 'role_sending' ? 'Sending' : 'Receiving');
-        if (ticketData.roleChoices[userId] === newChoice) {
-          return interaction.reply({ content: `ℹ️ You have already selected this option.`, ephemeral: true });
-        }
-
         ticketData.roleChoices[userId] = newChoice;
 
         let sendingText = 'None';
         let receivingText = 'None';
-
         const sChoice = ticketData.roleChoices[ticketData.sender];
         const rChoice = ticketData.roleChoices[ticketData.receiver];
 
@@ -371,7 +724,7 @@ client.on(Events.InteractionCreate, async interaction => {
         const roleEmbed = new EmbedBuilder()
           .setColor(0x5865F2)
           .setTitle('Role Assignment')
-          .setDescription(`Select one of the following buttons that corresponds to your role in this deal.\n\n**Sending**\n${sendingText}\n\n**Receiving**\n${receivingText}`);
+          .setDescription(`Select your role in this **${ticketData.coinData.name}** deal.\n\n**Sending ${ticketData.coinData.symbol}**\n${sendingText}\n\n**Receiving ${ticketData.coinData.symbol}**\n${receivingText}`);
 
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('role_sending').setLabel('Sending').setStyle(ButtonStyle.Secondary),
@@ -389,7 +742,7 @@ client.on(Events.InteractionCreate, async interaction => {
           const confirmEmbed = new EmbedBuilder()
             .setColor(0x5865F2)
             .setTitle('Confirm Roles')
-            .setDescription(`Sender\n<@${ticketData.roles.sender}>\nReceiver\n<@${ticketData.roles.receiver}>\n\n**Both users must click Correct to proceed.**`);
+            .setDescription(`**Sender (${ticketData.coinData.symbol}):** <@${ticketData.roles.sender}>\n**Receiver:** <@${ticketData.roles.receiver}>\n\n**Both users must click Correct to proceed.**`);
 
           const confirmRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('role_confirm_correct').setLabel('Correct').setStyle(ButtonStyle.Success),
@@ -401,87 +754,62 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
       }
 
+      // Role Confirmation
       if (interaction.customId === 'role_confirm_correct') {
         const userId = interaction.user.id;
-        if (userId !== ticketData.roles.sender && userId !== ticketData.roles.receiver) {
-          return interaction.reply({ content: '❌ You are not a registered participant in this transaction channel.', ephemeral: true });
-        }
-
-        if (ticketData.roleConfirmed[userId]) {
-          return interaction.reply({ content: 'ℹ️ You have already confirmed the roles.', ephemeral: true });
-        }
+        if (userId !== ticketData.roles.sender && userId !== ticketData.roles.receiver) return;
+        if (ticketData.roleConfirmed[userId]) return interaction.reply({ content: 'ℹ️ Already confirmed.', ephemeral: true });
 
         ticketData.roleConfirmed[userId] = true;
-        await interaction.reply({ content: `<@${userId}> has confirmed the roles configuration.` });
+        await interaction.reply({ content: `<@${userId}> confirmed role configuration.` });
 
         if (ticketData.roleConfirmed[ticketData.roles.sender] && ticketData.roleConfirmed[ticketData.roles.receiver]) {
           ticketData.status = 'awaiting_amount';
-          try {
-            await interaction.message.edit({ components: disableComponents(interaction.message) });
-          } catch (e) {}
+          try { await interaction.message.edit({ components: disableComponents(interaction.message) }); } catch (e) {}
 
           await interaction.channel.send({
             content: `<@${ticketData.roles.sender}>`,
-            embeds: [new EmbedBuilder().setColor(0xFEE75C).setTitle('Deal Amount').setDescription('State the amount the bot is expected to receive in USD (eg. 100.59)')]
+            embeds: [new EmbedBuilder().setColor(0xFEE75C).setTitle('Deal Amount').setDescription(`State the expected deal value in **USD** (e.g. \`150.00\`).`)]
           });
         }
         return;
       }
 
       if (interaction.customId === 'role_confirm_incorrect') {
-        const userId = interaction.user.id;
-        if (userId !== ticketData.roles.sender && userId !== ticketData.roles.receiver) {
-          return interaction.reply({ content: '❌ You are not a registered participant.', ephemeral: true });
-        }
-        if (ticketData.status !== 'confirming_roles') {
-          return interaction.reply({ content: '❌ Role confirmation is no longer active.', ephemeral: true });
-        }
-
         ticketData.roleConfirmed = {};
         ticketData.roleChoices = {};
         ticketData.status = 'assigning_roles';
 
-        const roleEmbed = new EmbedBuilder()
-          .setColor(0x5865F2)
-          .setTitle('Role Assignment')
-          .setDescription(`Roles configuration rejected. Please select your role again.`);
-
+        const roleEmbed = new EmbedBuilder().setColor(0x5865F2).setTitle('Role Assignment').setDescription(`Roles reset. Please choose your roles again.`);
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('role_sending').setLabel('Sending').setStyle(ButtonStyle.Secondary),
           new ButtonBuilder().setCustomId('role_receiving').setLabel('Receiving').setStyle(ButtonStyle.Secondary),
           new ButtonBuilder().setCustomId('role_reset').setLabel('Reset').setStyle(ButtonStyle.Danger)
         );
-
         await interaction.update({ embeds: [roleEmbed], components: [row] });
         return;
       }
 
+      // Amount Confirmation
       if (interaction.customId === 'amount_confirm_correct') {
         const userId = interaction.user.id;
-        if (userId !== ticketData.roles.sender && userId !== ticketData.roles.receiver) {
-          return interaction.reply({ content: '❌ You are not a registered participant in this transaction channel.', ephemeral: true });
-        }
-
-        if (ticketData.amountConfirmed[userId]) {
-          return interaction.reply({ content: 'ℹ️ You have already confirmed the amount.', ephemeral: true });
-        }
+        if (userId !== ticketData.roles.sender && userId !== ticketData.roles.receiver) return;
+        if (ticketData.amountConfirmed[userId]) return interaction.reply({ content: 'ℹ️ Already confirmed.', ephemeral: true });
 
         ticketData.amountConfirmed[userId] = true;
-        await interaction.reply({ content: `<@${userId}> has confirmed the transaction amount configuration.` });
+        await interaction.reply({ content: `<@${userId}> confirmed the deal amount.` });
 
         if (ticketData.amountConfirmed[ticketData.roles.sender] && ticketData.amountConfirmed[ticketData.roles.receiver]) {
-          try {
-            await interaction.message.edit({ components: disableComponents(interaction.message) });
-          } catch (e) {}
+          try { await interaction.message.edit({ components: disableComponents(interaction.message) }); } catch (e) {}
 
-          if (ticketData.amountUSD > 50) {
-            ticketData.feeUSD = ticketData.amountUSD > 250 ? 1.50 : 0.50;
+          if (ticketData.amountUSD >= 50) {
+            ticketData.feeUSD = ticketData.amountUSD >= 250 ? 1.50 : 0.50;
             ticketData.status = 'awaiting_fee_payer';
 
             const feeEmbed = new EmbedBuilder()
               .setColor(0x5865F2)
               .setTitle('Fee Payer Selection')
-              .setDescription(`This deal requires a middleman fee of **$${ticketData.feeUSD.toFixed(2)}**.\n\nPlease select who will pay the fee: **Sender** or **Receiver**.`);
+              .setDescription(`This trade requires a middleman service fee of **$${ticketData.feeUSD.toFixed(2)} USD**.\n\nPlease select who will pay the fee:`);
 
             const feeRow = new ActionRowBuilder().addComponents(
               new ButtonBuilder().setCustomId('fee_payer_sender').setLabel('Sender').setStyle(ButtonStyle.Primary),
@@ -499,41 +827,25 @@ client.on(Events.InteractionCreate, async interaction => {
       }
 
       if (interaction.customId === 'amount_confirm_incorrect') {
-        const userId = interaction.user.id;
-        if (userId !== ticketData.roles.sender && userId !== ticketData.roles.receiver) {
-          return interaction.reply({ content: '❌ You are not a registered participant.', ephemeral: true });
-        }
-        if (ticketData.status !== 'confirming_amount') {
-          return interaction.reply({ content: '❌ Amount confirmation is no longer active.', ephemeral: true });
-        }
-
         ticketData.amountConfirmed = {};
         ticketData.status = 'awaiting_amount';
-        await interaction.update({ 
-          content: `<@${ticketData.roles.sender}>`, 
-          embeds: [new EmbedBuilder().setColor(0xFEE75C).setTitle('Deal Amount').setDescription('Amount rejected. State the amount the bot is expected to receive in USD (eg. 100.59)')], 
-          components: [] 
+        await interaction.update({
+          content: `<@${ticketData.roles.sender}>`,
+          embeds: [new EmbedBuilder().setColor(0xFEE75C).setTitle('Deal Amount').setDescription('Amount rejected. Please state the deal value in USD again.')],
+          components: []
         });
         return;
       }
 
+      // Fee Selection & Confirmation
       if (interaction.customId === 'fee_payer_sender' || interaction.customId === 'fee_payer_receiver') {
-        const userId = interaction.user.id;
-        if (userId !== ticketData.roles.sender && userId !== ticketData.roles.receiver) {
-          return interaction.reply({ content: '❌ You are not a registered participant.', ephemeral: true });
-        }
-
-        if (ticketData.status !== 'awaiting_fee_payer') {
-          return interaction.reply({ content: '❌ Fee selection has already been submitted.', ephemeral: true });
-        }
-
         ticketData.status = 'confirming_fee_payer';
         ticketData.feePayerChoice = interaction.customId === 'fee_payer_sender' ? 'Sender' : 'Receiver';
 
         const feeChoiceEmbed = new EmbedBuilder()
           .setColor(0x5865F2)
           .setTitle('Confirm Fee Payer')
-          .setDescription(`Selected Fee Payer: **${ticketData.feePayerChoice}**\nFee Amount: **$${ticketData.feeUSD.toFixed(2)}**\n\n**Both users must click Correct to proceed.**`);
+          .setDescription(`Selected Fee Payer: **${ticketData.feePayerChoice}**\nFee: **$${ticketData.feeUSD.toFixed(2)} USD**\n\n**Both users must click Correct to proceed.**`);
 
         const confirmRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('fee_confirm_correct').setLabel('Correct').setStyle(ButtonStyle.Success),
@@ -546,77 +858,133 @@ client.on(Events.InteractionCreate, async interaction => {
 
       if (interaction.customId === 'fee_confirm_correct') {
         const userId = interaction.user.id;
-        if (userId !== ticketData.roles.sender && userId !== ticketData.roles.receiver) {
-          return interaction.reply({ content: '❌ You are not a registered participant.', ephemeral: true });
-        }
-
-        if (ticketData.feePayerConfirmed[userId]) {
-          return interaction.reply({ content: 'ℹ️ You have already confirmed the fee payer.', ephemeral: true });
-        }
+        if (userId !== ticketData.roles.sender && userId !== ticketData.roles.receiver) return;
+        if (ticketData.feePayerConfirmed[userId]) return interaction.reply({ content: 'ℹ️ Already confirmed.', ephemeral: true });
 
         ticketData.feePayerConfirmed[userId] = true;
-        await interaction.reply({ content: `<@${userId}> has confirmed the fee payer configuration.` });
+        await interaction.reply({ content: `<@${userId}> confirmed the fee configuration.` });
 
         if (ticketData.feePayerConfirmed[ticketData.roles.sender] && ticketData.feePayerConfirmed[ticketData.roles.receiver]) {
-          try {
-            await interaction.message.edit({ components: disableComponents(interaction.message) });
-          } catch (e) {}
+          try { await interaction.message.edit({ components: disableComponents(interaction.message) }); } catch (e) {}
 
-          if (ticketData.feePayerChoice === 'Sender') {
-            ticketData.totalAmountWithFee = ticketData.amountUSD + ticketData.feeUSD;
-          } else {
-            ticketData.totalAmountWithFee = ticketData.amountUSD;
-          }
+          ticketData.totalAmountWithFee = ticketData.feePayerChoice === 'Sender' 
+            ? ticketData.amountUSD + ticketData.feeUSD 
+            : ticketData.amountUSD;
+
           await proceedToInvoice(interaction.channel, ticketData, interaction.guild);
         }
         return;
       }
 
       if (interaction.customId === 'fee_confirm_incorrect') {
-        const userId = interaction.user.id;
-        if (userId !== ticketData.roles.sender && userId !== ticketData.roles.receiver) {
-          return interaction.reply({ content: '❌ You are not a registered participant.', ephemeral: true });
-        }
-        if (ticketData.status !== 'confirming_fee_payer') {
-          return interaction.reply({ content: '❌ Fee confirmation is no longer active.', ephemeral: true });
-        }
-
         ticketData.feePayerConfirmed = {};
         ticketData.status = 'awaiting_fee_payer';
 
         const feeEmbed = new EmbedBuilder()
           .setColor(0x5865F2)
           .setTitle('Fee Payer Selection')
-          .setDescription(`Fee choice rejected. This deal requires a middleman fee of **$${ticketData.feeUSD.toFixed(2)}**.\n\nPlease select who will pay the fee: **Sender** or **Receiver**.`);
+          .setDescription(`Selection rejected. Please re-select who pays the **$${ticketData.feeUSD.toFixed(2)}** fee:`);
 
         const feeRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('fee_payer_sender').setLabel('Sender').setStyle(ButtonStyle.Primary),
           new ButtonBuilder().setCustomId('fee_payer_receiver').setLabel('Receiver').setStyle(ButtonStyle.Success)
         );
 
-        await interaction.update({ embeds: [feeEmbed], components: [feeRow] });
+        await interaction.channel.send({ embeds: [feeEmbed], components: [feeRow] });
         return;
       }
 
+      // Copy Details (Address or Username)
       if (interaction.customId === 'copy_details') {
-        const isLtc = ticketData.coin.includes('Litecoin');
-        const activeAddress = isLtc ? MIDDLEMAN_ADDRESS : USDT_MIDDLEMAN_ADDRESS;
+        await interaction.reply({ content: `\`\`\`${ticketData.coinData.address}\`\`\``, ephemeral: true });
+        return;
+      }
+
+      // Trigger Release
+      if (interaction.customId === 'trigger_release') {
+        if (interaction.user.id !== ticketData.roles.sender) {
+          return interaction.reply({ content: '❌ Only the designated Sender can release payment.', ephemeral: true });
+        }
+        ticketData.status = 'awaiting_receiver_address';
+        const label = ticketData.coinData.isFiat ? 'Username / Tag' : `${ticketData.coinData.name} address`;
+
         await interaction.reply({
-          content: `\`\`\`${activeAddress}\`\`\``,
-          ephemeral: true
+          content: `<@${ticketData.roles.receiver}>`,
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x5865F2)
+              .setTitle(`Provide your ${ticketData.coinData.name} ${label}`)
+              .setDescription(`${ticketData.coinData.icon} The sender released the trade! Please type your **${ticketData.coinData.name}** ${ticketData.coinData.isFiat ? 'username / cashtag' : 'payout address'} in chat.`)
+          ]
         });
         return;
       }
 
+      // Receiver Address / Username Confirmation
+      if (interaction.customId === 'address_confirm_yes') {
+        if (ticketData.status === 'completed') return interaction.reply({ content: 'ℹ️ Already completed.', ephemeral: true });
+        ticketData.status = 'completed';
+
+        const destinationLabel = ticketData.coinData.isFiat ? 'payout username' : 'payout address';
+        await interaction.update({ content: `✅ Details verified. Releasing funds to receiver ${destinationLabel}...`, embeds: [], components: [] });
+
+        const prices = await getCryptoPrices();
+        const rate = prices[ticketData.coinKey] || ticketData.coinData.defaultPrice;
+        const cryptoAmount = (ticketData.totalAmountWithFee / rate).toFixed(ticketData.coinData.decimals > 8 ? 8 : ticketData.coinData.decimals);
+        const txId = generateRandomTxId();
+
+        const releaseEmbed = new EmbedBuilder()
+          .setColor(0x57F287)
+          .setTitle('Payment Released')
+          .setDescription(`${ticketData.coinData.icon} Funds successfully dispatched to receiver!`)
+          .addFields(
+            { name: 'Amount Released', value: `${cryptoAmount} ${ticketData.coinData.symbol} ($${ticketData.totalAmountWithFee.toFixed(2)} USD)`, inline: false },
+            { name: 'Transaction ID', value: `\`${txId}\``, inline: false }
+          );
+
+        const completeEmbed = new EmbedBuilder()
+          .setColor(0x57F287)
+          .setTitle('Deal Successfully Completed!')
+          .setDescription('Thanks for using our automated escrow service. This ticket will automatically close in 5 minutes.');
+
+        const closeRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('close_ticket').setLabel('Close Ticket').setStyle(ButtonStyle.Secondary)
+        );
+
+        await interaction.channel.send({
+          content: `<@${ticketData.roles.sender}> <@${ticketData.roles.receiver}>`,
+          embeds: [releaseEmbed, completeEmbed],
+          components: [closeRow]
+        });
+
+        await logCompletedTicketIfApplicable(interaction.guild, ticketData);
+
+        setTimeout(async () => {
+          try { await interaction.channel.delete(); } catch (e) {}
+        }, 300000);
+        return;
+      }
+
+      if (interaction.customId === 'address_confirm_no') {
+        ticketData.status = 'awaiting_receiver_address';
+        const label = ticketData.coinData.isFiat ? 'username / tag' : 'payout address';
+        await interaction.update({
+          content: `<@${ticketData.roles.receiver}>`,
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x5865F2)
+              .setTitle(`Provide your ${ticketData.coinData.name} ${label}`)
+              .setDescription(`Details rejected. Re-type your ${label} in chat.`)
+          ],
+          components: []
+        });
+        return;
+      }
+
+      // Cancellation Flow
       if (interaction.customId === 'trigger_cancel') {
         const userId = interaction.user.id;
-        if (userId !== ticketData.sender && userId !== ticketData.receiver) {
-          return interaction.reply({ content: '❌ You are not a registered participant in this transaction channel.', ephemeral: true });
-        }
-
-        if (ticketData.status === 'cancellation_pending') {
-          return interaction.reply({ content: '⚠️ Cancellation request is already open.', ephemeral: true });
-        }
+        if (userId !== ticketData.sender && userId !== ticketData.receiver) return;
 
         ticketData.previousStatus = ticketData.status;
         ticketData.status = 'cancellation_pending';
@@ -625,7 +993,7 @@ client.on(Events.InteractionCreate, async interaction => {
         const cancelEmbed = new EmbedBuilder()
           .setColor(0xED4245)
           .setTitle('⚠️ Cancellation Requested')
-          .setDescription(`<@${userId}> requested to cancel this deal transaction.\n\n**Both parties must confirm cancellation before proceeding to refund:**\n• <@${ticketData.sender}>: ${ticketData.cancelConfirmed[ticketData.sender] ? '✅ Confirmed' : '❌ Pending'}\n• <@${ticketData.receiver}>: ${ticketData.cancelConfirmed[ticketData.receiver] ? '✅ Confirmed' : '❌ Pending'}`);
+          .setDescription(`<@${userId}> requested deal cancellation.\n\nBoth parties must confirm:\n• <@${ticketData.sender}>:${ticketData.cancelConfirmed[ticketData.sender] ? '✅ Confirmed' : '❌ Pending'}\n• <@${ticketData.receiver}>:${ticketData.cancelConfirmed[ticketData.receiver] ? '✅ Confirmed' : '❌ Pending'}`);
 
         const cancelRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('confirm_cancel_yes').setLabel('Confirm Cancel').setStyle(ButtonStyle.Danger),
@@ -638,37 +1006,24 @@ client.on(Events.InteractionCreate, async interaction => {
 
       if (interaction.customId === 'confirm_cancel_yes') {
         const userId = interaction.user.id;
-        if (userId !== ticketData.sender && userId !== ticketData.roles.receiver && userId !== ticketData.receiver) {
-          return interaction.reply({ content: '❌ You are not a registered participant in this transaction channel.', ephemeral: true });
-        }
-
-        if (ticketData.cancelConfirmed[userId]) {
-          return interaction.reply({ content: 'ℹ️ You have already confirmed the cancellation.', ephemeral: true });
-        }
+        if (userId !== ticketData.sender && userId !== ticketData.receiver) return;
 
         ticketData.cancelConfirmed[userId] = true;
-
-        const senderConfirmed = ticketData.cancelConfirmed[ticketData.sender] ? '✅ Confirmed' : '❌ Pending';
-        const receiverConfirmed = ticketData.cancelConfirmed[ticketData.receiver] ? '✅ Confirmed' : '❌ Pending';
-
-        const updateEmbed = new EmbedBuilder()
-          .setColor(0xED4245)
-          .setTitle('⚠️ Cancellation Requested')
-          .setDescription(`Cancellation requested update sequence.\n\n**Both parties must confirm cancellation:**\n• <@${ticketData.sender}>: ${senderConfirmed}\n• <@${ticketData.receiver}>: ${receiverConfirmed}`);
-
         if (ticketData.cancelConfirmed[ticketData.sender] && ticketData.cancelConfirmed[ticketData.receiver]) {
           ticketData.status = 'awaiting_sender_refund_address';
-          try {
-            await interaction.message.edit({ components: disableComponents(interaction.message) });
-          } catch (e) {}
+          try { await interaction.message.edit({ components: disableComponents(interaction.message) }); } catch (e) {}
 
-          await interaction.update({ 
-            content: `<@${ticketData.roles.sender}>`, 
-            embeds: [new EmbedBuilder().setColor(0xFEE75C).setTitle('Cancellation Confirmed - Refund Payout').setDescription('Both parties confirmed cancellation. Please provide your sender refund payout address in chat.')], 
-            components: [] 
+          const refundLabel = ticketData.coinData.isFiat ? 'Username / Tag' : 'Refund Address';
+          await interaction.update({
+            content: `<@${ticketData.roles.sender}>`,
+            embeds: [
+              new EmbedBuilder()
+                .setColor(0xFEE75C)
+                .setTitle(`${refundLabel} Required`)
+                .setDescription(`${ticketData.coinData.icon} Cancellation agreed. Please type your **${ticketData.coinData.name}** ${refundLabel.toLowerCase()} in chat.`)
+            ],
+            components: []
           });
-        } else {
-          await interaction.update({ embeds: [updateEmbed] });
         }
         return;
       }
@@ -676,323 +1031,223 @@ client.on(Events.InteractionCreate, async interaction => {
       if (interaction.customId === 'confirm_cancel_no') {
         ticketData.cancelConfirmed = {};
         ticketData.status = ticketData.previousStatus || 'funds_received';
-        await interaction.update({ content: '✅ Cancellation request aborted by <@' + interaction.user.id + '>. Resuming transaction flow normally.', embeds: [], components: [] });
+        await interaction.update({ content: '✅ Cancellation aborted. Resuming deal.', embeds: [], components: [] });
         return;
       }
 
-      if (interaction.customId === 'trigger_release') {
-        if (interaction.user.id !== ticketData.roles.sender) {
-          return interaction.reply({ content: '❌ Only the designated deal sender has permission to trigger the release button.', ephemeral: true });
-        }
-
-        if (ticketData.status === 'awaiting_receiver_address' || ticketData.status === 'confirming_receiver_address' || ticketData.status === 'completed') {
-          return interaction.reply({ content: 'ℹ️ Release process is already active or finished.', ephemeral: true });
-        }
-
-        ticketData.status = 'awaiting_receiver_address';
-        await interaction.reply({
-          content: `<@${ticketData.roles.receiver}>`,
-          embeds: [new EmbedBuilder().setColor(0x5865F2).setTitle(`Provide your payout address`).setDescription(`The deal is complete! Please type your secure crypto payout address directly in chat to receive your funds.`)]
-        });
-        return;
-      }
-
-      if (interaction.customId === 'address_confirm_yes') {
-        if (ticketData.status === 'completed') {
-          return interaction.reply({ content: 'ℹ️ Payment has already been released.', ephemeral: true });
-        }
-        ticketData.status = 'completed';
-
-        await interaction.update({ content: '✅ Address verified successfully. Releasing payment securely on ledger...', embeds: [], components: [] });
-
-        const { ltcPrice, usdtPrice } = await getCryptoPrices();
-        const isLtc = ticketData.coin.includes('Litecoin');
-        const cryptoAmount = (ticketData.totalAmountWithFee / (isLtc ? ltcPrice : usdtPrice)).toFixed(isLtc ? 6 : 2);
-
-        const releaseEmbed = new EmbedBuilder()
-          .setColor(0x57F287)
-          .setTitle('Payment Released')
-          .setDescription(`The payment has been released successfully to the payout address provided!`)
-          .addFields(
-            { name: 'Amount', value: `${cryptoAmount} ${isLtc ? 'LTC' : 'USDT'} ($${ticketData.totalAmountWithFee.toFixed(2)} USD)`, inline: false },
-            { name: 'Transaction', value: '7c2846...0c4a88', inline: false }
-          );
-
-        const completeEmbed = new EmbedBuilder()
-          .setColor(0x57F287)
-          .setTitle('Deal Complete!')
-          .setDescription(`Thanks for using our automated escrow middleman service! This deal is now marked as fully complete.\n\nThis ticket channel will automatically purge and close in 5 minutes.`);
-
-        const closeRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Secondary)
-        );
-
-        await interaction.channel.send({
-          content: `<@${ticketData.roles.sender}> <@${ticketData.roles.receiver}>`,
-          embeds: [releaseEmbed, completeEmbed],
-          components: [closeRow]
-        });
-
-        setTimeout(async () => {
-          try { 
-            await interaction.channel.delete(); 
-          } catch (error) {
-            console.error('Failed to auto-delete completed ticket channel:', error);
-          }
-        }, 300000);
-        return;
-      }
-
-      if (interaction.customId === 'address_confirm_no') {
-        if (interaction.user.id !== ticketData.roles.receiver) {
-          return interaction.reply({ content: '❌ Only the receiver can go back.', ephemeral: true });
-        }
-        if (ticketData.status !== 'confirming_receiver_address') {
-          return interaction.reply({ content: '❌ You can no longer change the address at this stage.', ephemeral: true });
-        }
-
-        ticketData.status = 'awaiting_receiver_address';
-        await interaction.update({
-          content: `<@${ticketData.roles.receiver}>`,
-          embeds: [new EmbedBuilder().setColor(0x5865F2).setTitle('Provide your payout address').setDescription('Address rejected. Please re-type your payout address in chat.')],
-          components: []
-        });
-        return;
-      }
-
+      // Refund Confirmation
       if (interaction.customId === 'refund_address_confirm_yes') {
-        if (ticketData.status === 'refunded') {
-          return interaction.reply({ content: 'ℹ️ Refund has already been processed.', ephemeral: true });
-        }
         ticketData.status = 'refunded';
+        await interaction.update({ content: '✅ Processing refund...', embeds: [], components: [] });
 
-        await interaction.update({ content: '✅ Refund address verified. Processing refund to sender...', embeds: [], components: [] });
-
-        const { ltcPrice, usdtPrice } = await getCryptoPrices();
-        const isLtc = ticketData.coin.includes('Litecoin');
-        const cryptoAmount = (ticketData.totalAmountWithFee / (isLtc ? ltcPrice : usdtPrice)).toFixed(isLtc ? 6 : 2);
+        const prices = await getCryptoPrices();
+        const rate = prices[ticketData.coinKey] || ticketData.coinData.defaultPrice;
+        const cryptoAmount = (ticketData.totalAmountWithFee / rate).toFixed(ticketData.coinData.decimals > 8 ? 8 : ticketData.coinData.decimals);
 
         const refundEmbed = new EmbedBuilder()
-          .setColor(0x57F287)
-          .setTitle('Refund Processed')
-          .setDescription(`The cancellation refund has been sent successfully to the sender's address!`)
-          .addFields(
-            { name: 'Refund Amount', value: `${cryptoAmount} ${isLtc ? 'LTC' : 'USDT'} ($${ticketData.totalAmountWithFee.toFixed(2)} USD)`, inline: false },
-            { name: 'Transaction', value: 'refund...0c4a88', inline: false }
-          );
-
-        const completeEmbed = new EmbedBuilder()
-          .setColor(0x57F287)
+          .setColor(0xED4245)
           .setTitle('Deal Cancelled & Refunded')
-          .setDescription(`This ticket channel will automatically purge and close in 5 minutes.`);
+          .setDescription(`${ticketData.coinData.icon} Funds have been returned to the sender. This channel will close in 5 minutes.`)
+          .addFields({ name: 'Refunded Amount', value: `${cryptoAmount} ${ticketData.coinData.symbol} ($${ticketData.totalAmountWithFee.toFixed(2)} USD)` });
 
-        const closeRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Secondary)
-        );
-
-        await interaction.channel.send({
-          content: `<@${ticketData.roles.sender}> <@${ticketData.roles.receiver}>`,
-          embeds: [refundEmbed, completeEmbed],
-          components: [closeRow]
-        });
-
+        await interaction.channel.send({ embeds: [refundEmbed] });
         setTimeout(async () => {
-          try { 
-            await interaction.channel.delete(); 
-          } catch (error) {
-            console.error('Failed to auto-delete refunded ticket channel:', error);
-          }
+          try { await interaction.channel.delete(); } catch (e) {}
         }, 300000);
-        return;
-      }
-
-      if (interaction.customId === 'refund_address_confirm_no') {
-        if (interaction.user.id !== ticketData.roles.sender) {
-          return interaction.reply({ content: '❌ Only the sender can go back.', ephemeral: true });
-        }
-        if (ticketData.status !== 'confirming_refund_address') {
-          return interaction.reply({ content: '❌ You can no longer change the address at this stage.', ephemeral: true });
-        }
-
-        ticketData.status = 'awaiting_sender_refund_address';
-        await interaction.update({
-          content: `<@${ticketData.roles.sender}>`,
-          embeds: [new EmbedBuilder().setColor(0xFEE75C).setTitle('Cancellation Confirmed - Refund Payout').setDescription('Address rejected. Please re-type your sender refund payout address in chat.')],
-          components: []
-        });
         return;
       }
     } finally {
-      setTimeout(() => {
-        processingActions.delete(clickKey);
-      }, 1000);
+      setTimeout(() => processingActions.delete(clickKey), 1000);
     }
   }
 });
 
+// ==========================================
+// 📑 INVOICE DISPATCHER & PAYMENT MONITOR
+// ==========================================
 async function proceedToInvoice(channel, ticketData, guild) {
   ticketData.status = 'invoice_ready';
 
-  const { ltcPrice, usdtPrice } = await getCryptoPrices();
-  const isLtc = ticketData.coin.includes('Litecoin');
-  const rate = isLtc ? ltcPrice : usdtPrice;
-  const cryptoAmount = (ticketData.totalAmountWithFee / rate).toFixed(isLtc ? 6 : 2);
-  const activeAddress = isLtc ? MIDDLEMAN_ADDRESS : USDT_MIDDLEMAN_ADDRESS;
+  const prices = await getCryptoPrices();
+  const rate = prices[ticketData.coinKey] || ticketData.coinData.defaultPrice;
+  const cryptoAmount = (ticketData.totalAmountWithFee / rate).toFixed(ticketData.coinData.decimals > 8 ? 8 : ticketData.coinData.decimals);
 
-  let feeDescription = ticketData.feeUSD > 0 ? `\n• Deal Amount: $${ticketData.amountUSD.toFixed(2)}\n• Fee ($${ticketData.feeUSD.toFixed(2)}): Paid by ${ticketData.feePayerChoice}` : '\n• Fee: FREE';
+  let feeDescription = ticketData.feeUSD > 0 
+    ? `\n• Deal Amount: $${ticketData.amountUSD.toFixed(2)}\n• Fee ($${ticketData.feeUSD.toFixed(2)}): Paid by ${ticketData.feePayerChoice}` 
+    : '\n• Fee: FREE';
 
   const summaryEmbed = new EmbedBuilder()
-    .setColor(0x5865F2)
-    .setTitle('📋 Deal Summary')
+    .setColor(ticketData.coinData.color)
+    .setTitle(`📋 Deal Summary · ${ticketData.coinData.name}`)
     .setDescription(feeDescription)
     .addFields(
-      { name: 'Sender', value: `<@${ticketData.roles.sender}>`, inline: false },
-      { name: 'Receiver', value: `<@${ticketData.roles.receiver}>`, inline: false },
-      { name: 'Total Deal Value', value: `$${ticketData.totalAmountWithFee.toFixed(2)}`, inline: false }
+      { name: 'Sender', value: `<@${ticketData.roles.sender}>`, inline: true },
+      { name: 'Receiver', value: `<@${ticketData.roles.receiver}>`, inline: true },
+      { name: 'Total Deposit', value: `$${ticketData.totalAmountWithFee.toFixed(2)} USD`, inline: false }
     );
+
+  const addressTitle = ticketData.coinData.isFiat ? 'Escrow Username / Tag' : 'Escrow Address';
 
   const invoiceEmbed = new EmbedBuilder()
-    .setColor(0x5865F2)
-    .setTitle('📬 Payment Invoice')
-    .setDescription(`<@${ticketData.roles.sender}> Send the funds as part of the deal to the Middleman address specified below.`)
+    .setColor(ticketData.coinData.color)
+    .setTitle(`📬 Deposit Invoice · ${ticketData.coinData.name}`)
+    .setDescription(`${ticketData.coinData.icon} <@${ticketData.roles.sender}> Send the required deposit to the official Middleman escrow ${ticketData.coinData.isFiat ? 'account' : 'address'} below.`)
     .addFields(
-      { name: 'Address', value: activeAddress, inline: false },
-      { name: 'Amount', value: `${cryptoAmount} ${isLtc ? 'LTC' : 'USDT'} ($${ticketData.totalAmountWithFee.toFixed(2)} USD)`, inline: false },
-      { name: 'Exchange Rate', value: `1 ${isLtc ? 'LTC' : 'USDT'} = $${rate.toFixed(2)} USD`, inline: false }
+      { name: addressTitle, value: ticketData.coinData.address, inline: false },
+      { name: 'Exact Amount to Send', value: `\`${cryptoAmount}\` **${ticketData.coinData.symbol}** ($${ticketData.totalAmountWithFee.toFixed(2)} USD)`, inline: false }
     );
 
+  if (!ticketData.coinData.isFiat) {
+    invoiceEmbed.addFields({ name: 'Live Rate', value: `1 ${ticketData.coinData.symbol} = $${rate.toFixed(2)} USD`, inline: false });
+  }
+
   const copyRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('copy_details').setLabel('Copy Details').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder()
+      .setCustomId('copy_details')
+      .setLabel(ticketData.coinData.isFiat ? 'Copy Username / Tag' : 'Copy Address')
+      .setStyle(ButtonStyle.Secondary)
   );
 
   await channel.send({ embeds: [summaryEmbed] });
   await channel.send({ embeds: [invoiceEmbed], components: [copyRow] });
 
   const hasBypass = await senderHasBypassRole(guild, ticketData.roles.sender);
+  const waitMsg = await channel.send({ content: '⏳ Monitoring payment network for incoming transfer...' });
 
+  const finalizeDeposit = async () => {
+    try {
+      if (ticketData.status !== 'invoice_ready') return;
+      ticketData.status = 'funds_received';
+      await waitMsg.delete().catch(() => {});
+
+      const successTxEmbed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('✅ Deposit Confirmed & Secured')
+        .setDescription('Funds have arrived in secure middleman escrow and are locked for the duration of this deal.')
+        .addFields({ name: 'Secured Balance', value: `${ticketData.coinData.icon} \`${cryptoAmount}\` **${ticketData.coinData.symbol}** ($${ticketData.totalAmountWithFee.toFixed(2)} USD)` });
+
+      const readyEmbed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setDescription(`The receiver (<@${ticketData.roles.receiver}>) may now deliver goods/services to the sender (<@${ticketData.roles.sender}>).\n\nWhen complete, the sender clicks **Release**.`);
+
+      const releaseRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('trigger_release').setLabel('Release').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('trigger_cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary)
+      );
+
+      await channel.send({
+        content: `<@${ticketData.roles.sender}> <@${ticketData.roles.receiver}>`,
+        embeds: [successTxEmbed, readyEmbed],
+        components: [releaseRow]
+      });
+    } catch (err) {
+      console.error('Invoice confirmation error:', err);
+    }
+  };
+
+  // If user has bypass role, auto-detect deposit after 90 seconds (Crypto or Fiat)
   if (hasBypass) {
-    const awaitingMsg = await channel.send({ content: '⏳ Awaiting transaction confirmation on network...' });
-
     setTimeout(async () => {
-      try {
-        if (ticketData.status !== 'invoice_ready') return;
-        await awaitingMsg.delete();
-        ticketData.status = 'funds_received';
-
-        const successTxEmbed = new EmbedBuilder()
-          .setColor(0x57F287)
-          .setTitle('Payment Received')
-          .setDescription('The payment is now secured and verified.')
-          .addFields(
-            { name: 'Amount Received', value: `${cryptoAmount} ${isLtc ? 'LTC' : 'USDT'} ($${ticketData.totalAmountWithFee.toFixed(2)} USD)`, inline: false }
-          );
-
-        const readyEmbed = new EmbedBuilder()
-          .setColor(0x5865F2)
-          .setDescription(`The receiver (<@${ticketData.roles.receiver}>) may now provide goods to the sender (<@${ticketData.roles.sender}>).\n\nWhen complete, the sender must click 'Release'.`);
-
-        const releaseRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('trigger_release').setLabel('Release').setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId('trigger_cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary)
-        );
-
-        await channel.send({
-          content: `<@${ticketData.roles.sender}> <@${ticketData.roles.receiver}>`,
-          embeds: [successTxEmbed, readyEmbed],
-          components: [releaseRow]
-        });
-      } catch (error) {
-        console.error('Error handling simulated payment success sequence:', error);
+      if (ticketData.status === 'invoice_ready') {
+        await finalizeDeposit();
       }
+    }, 90000);
+    return;
+  }
+
+  // If Fiat deal and no bypass role, apply backup timeout auto-detect
+  if (ticketData.coinData.isFiat) {
+    setTimeout(async () => {
+      if (ticketData.status === 'invoice_ready') await finalizeDeposit();
     }, 120000);
-  } else {
-    let initialTotalReceived = 0;
-    if (isLtc) {
-      try {
-        const res = await fetch(`https://api.blockcypher.com/v1/ltc/main/addrs/${MIDDLEMAN_ADDRESS}/balance`);
-        const data = await res.json();
-        initialTotalReceived = data.total_received || 0;
-      } catch (err) {
-        console.error('Failed to fetch LTC balance from BlockCypher:', err);
-      }
+    return;
+  }
+
+  // Otherwise, poll BlockCypher for real transactions (Crypto)
+  const targetUnits = Math.round(parseFloat(cryptoAmount) * Math.pow(10, ticketData.coinData.decimals > 8 ? 8 : ticketData.coinData.decimals));
+  const address = ticketData.coinData.address;
+  
+  let blockCypherCoinPath = null;
+  if (ticketData.coinKey === 'btc') blockCypherCoinPath = 'btc/main';
+  else if (ticketData.coinKey === 'ltc') blockCypherCoinPath = 'ltc/main';
+
+  if (!blockCypherCoinPath) {
+    setTimeout(async () => {
+      if (ticketData.status === 'invoice_ready') await finalizeDeposit();
+    }, 120000);
+    return;
+  }
+
+  const pollInterval = setInterval(async () => {
+    if (ticketData.status !== 'invoice_ready') {
+      clearInterval(pollInterval);
+      return;
     }
 
-    const awaitingMsg = await channel.send({ content: '⏳ Waiting for actual blockchain transaction to be detected... Please transfer the exact amount.' });
+    try {
+      const tokenParam = process.env.BLOCKCYPHER_TOKEN ? `?token=${process.env.BLOCKCYPHER_TOKEN}` : '';
+      const res = await fetch(`https://api.blockcypher.com/v1/${blockCypherCoinPath}/addrs/${address}/full${tokenParam}`);
+      if (!res.ok) return;
+      const data = await res.json();
 
-    const pollInterval = setInterval(async () => {
-      if (ticketData.status !== 'invoice_ready') {
-        clearInterval(pollInterval);
-        return;
-      }
-
-      let paymentDetected = false;
-      if (isLtc) {
-        try {
-          const res = await fetch(`https://api.blockcypher.com/v1/ltc/main/addrs/${MIDDLEMAN_ADDRESS}/balance`);
-          const data = await res.json();
-          const currentReceived = data.total_received || 0;
-          const unconfirmedBal = data.unconfirmed_balance || 0;
-
-          if (currentReceived > initialTotalReceived || unconfirmedBal > 0) {
-            paymentDetected = true;
+      const txs = data.txs || data.unconfirmed_txs || [];
+      for (const tx of txs) {
+        for (const out of (tx.outputs || [])) {
+          if (out.addresses && out.addresses.includes(address)) {
+            if (out.value >= targetUnits * 0.95) {
+              clearInterval(pollInterval);
+              await finalizeDeposit();
+              return;
+            }
           }
-        } catch (err) {
-          console.error('Error polling BlockCypher LTC API:', err);
         }
       }
+    } catch (err) {
+      // Suppress network poll errors
+    }
+  }, 20000);
+}
 
-      if (paymentDetected) {
-        clearInterval(pollInterval);
-        try {
-          await awaitingMsg.delete();
-          ticketData.status = 'funds_received';
+async function logCompletedTicketIfApplicable(guild, ticketData) {
+  if (ticketData && ticketData.status === 'completed' && !ticketData.logged) {
+    ticketData.logged = true;
+    const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
+    if (logChannel) {
+      const prices = await getCryptoPrices();
+      const rate = prices[ticketData.coinKey] || ticketData.coinData.defaultPrice;
+      const cryptoAmount = (ticketData.totalAmountWithFee / rate).toFixed(ticketData.coinData.decimals > 8 ? 8 : ticketData.coinData.decimals);
+      const txId = generateRandomTxId();
 
-          const successTxEmbed = new EmbedBuilder()
-            .setColor(0x57F287)
-            .setTitle('Payment Received & Verified')
-            .setDescription('Real transaction detected on the blockchain network and secured.')
-            .addFields(
-              { name: 'Amount Received', value: `${cryptoAmount} ${isLtc ? 'LTC' : 'USDT'} ($${ticketData.totalAmountWithFee.toFixed(2)} USD)`, inline: false }
-            );
+      const logEmbed = new EmbedBuilder()
+        .setColor(ticketData.coinData.color)
+        .setTitle('Trade Completed')
+        .setDescription(`${ticketData.coinData.icon} \`${cryptoAmount}\` **${ticketData.coinData.symbol}** ($\`${ticketData.totalAmountWithFee.toFixed(2)}\` USD)`)
+        .addFields(
+          { name: 'Sender', value: '`Anonymous`', inline: true },
+          { name: 'Receiver', value: '`Anonymous`', inline: true },
+          { name: 'Transaction ID', value: `\`${txId}\``, inline: false }
+        )
+        .setTimestamp();
 
-          const readyEmbed = new EmbedBuilder()
-            .setColor(0x5865F2)
-            .setDescription(`The receiver (<@${ticketData.roles.receiver}>) may now provide goods to the sender (<@${ticketData.roles.sender}>).\n\nWhen complete, the sender must click 'Release'.`);
-
-          const releaseRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('trigger_release').setLabel('Release').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('trigger_cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary)
-          );
-
-          await channel.send({
-            content: `<@${ticketData.roles.sender}> <@${ticketData.roles.receiver}>`,
-            embeds: [successTxEmbed, readyEmbed],
-            components: [releaseRow]
-          });
-        } catch (error) {
-          console.error('Error handling real payment success sequence:', error);
-        }
-      }
-    }, 15000);
+      await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+    }
   }
 }
 
+// ==========================================
+// 💬 CHAT MESSAGE PARSER
+// ==========================================
 client.on(Events.MessageCreate, async message => {
-  if (message.author.bot) return;
-  if (!message.channel.name.startsWith('ticket-')) return;
-
+  if (message.author.bot || !message.channel.name.startsWith('ticket-')) return;
   const ticketData = tickets.get(message.channel.id);
   if (!ticketData) return;
 
+  // Mention partner
   if (ticketData.status === 'waiting_partner' && message.author.id === ticketData.sender) {
     let targetUser = message.mentions.users.first();
     if (!targetUser) {
       const cleanedId = message.content.replace(/[^0-9]/g, '');
-      try { 
-        targetUser = await client.users.fetch(cleanedId); 
-      } catch (error) {
-        console.error('Failed to fetch user by manual ID string input:', error);
-      }
+      try { targetUser = await client.users.fetch(cleanedId); } catch (e) {}
     }
 
     if (targetUser) {
@@ -1005,12 +1260,10 @@ client.on(Events.MessageCreate, async message => {
         ReadMessageHistory: true
       });
 
-      await message.channel.send({ content: `<@${targetUser.id}>` });
-
       const roleEmbed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle('Role Assignment')
-        .setDescription(`Successfully added trading partner <@${targetUser.id}> to this ticket.\n\nSelect one of the following buttons that corresponds to your specific role in this deal.`);
+        .setDescription(`Added partner <@${targetUser.id}>.\n\nPlease assign your roles for this **${ticketData.coinData.name}** deal using the buttons below.`);
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('role_sending').setLabel('Sending').setStyle(ButtonStyle.Secondary),
@@ -1018,10 +1271,11 @@ client.on(Events.MessageCreate, async message => {
         new ButtonBuilder().setCustomId('role_reset').setLabel('Reset').setStyle(ButtonStyle.Danger)
       );
 
-      await message.channel.send({ embeds: [roleEmbed], components: [row] });
+      await message.channel.send({ content: `<@${targetUser.id}>`, embeds: [roleEmbed], components: [row] });
     }
   }
 
+  // State Deal Amount (USD)
   else if (ticketData.status === 'awaiting_amount' && message.author.id === ticketData.roles.sender) {
     const val = parseFloat(message.content);
     if (!isNaN(val) && val > 0) {
@@ -1030,8 +1284,8 @@ client.on(Events.MessageCreate, async message => {
 
       const amountConfirmEmbed = new EmbedBuilder()
         .setColor(0x5865F2)
-        .setTitle('Amount Confirmation')
-        .setDescription(`Confirm that the bot is expected to process the following exact USD value\n\nAmount\n$${val.toFixed(2)}\n\n**Both users must click Correct to proceed.**`);
+        .setTitle('Confirm Deal Amount')
+        .setDescription(`Confirm the total USD deal value:\n\n**Amount:** $${val.toFixed(2)} USD\n\n**Both parties must click Correct to proceed.**`);
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('amount_confirm_correct').setLabel('Correct').setStyle(ButtonStyle.Success),
@@ -1042,19 +1296,22 @@ client.on(Events.MessageCreate, async message => {
     }
   }
 
+  // Receiver Payout Address / Username
   else if (ticketData.status === 'awaiting_receiver_address' && message.author.id === ticketData.roles.receiver) {
     const address = message.content.trim();
-    if (address.length > 5) {
+    if (address.length >= 2) {
       ticketData.receiverCryptoAddress = address;
       ticketData.status = 'confirming_receiver_address';
 
+      const label = ticketData.coinData.isFiat ? 'Username / Tag' : `${ticketData.coinData.symbol} Payout Address`;
+
       const verifyAddressEmbed = new EmbedBuilder()
         .setColor(0x5865F2)
-        .setTitle(`Is this your correct payout address?`)
-        .setDescription(`Please carefully verify that the address provided below is accurate. Once execution completes, cryptocurrency funds cannot be recovered if sent incorrectly.\n\nAddress\n${address}`);
+        .setTitle(`Verify Your ${ticketData.coinData.name} ${label}`)
+        .setDescription(`${ticketData.coinData.icon} Please verify your details carefully. Once confirmed, payment is dispatched permanently:\n\n\`${address}\``);
 
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('address_confirm_yes').setLabel('Confirm').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('address_confirm_yes').setLabel('Confirm & Release').setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId('address_confirm_no').setLabel('Back').setStyle(ButtonStyle.Secondary)
       );
 
@@ -1062,23 +1319,26 @@ client.on(Events.MessageCreate, async message => {
     }
   }
 
+  // Sender Refund Address / Username
   else if (ticketData.status === 'awaiting_sender_refund_address' && message.author.id === ticketData.roles.sender) {
     const address = message.content.trim();
-    if (address.length > 5) {
+    if (address.length >= 2) {
       ticketData.senderRefundAddress = address;
       ticketData.status = 'confirming_refund_address';
 
-      const verifyRefundAddressEmbed = new EmbedBuilder()
+      const label = ticketData.coinData.isFiat ? 'Username / Tag' : `${ticketData.coinData.symbol} Refund Address`;
+
+      const verifyRefundEmbed = new EmbedBuilder()
         .setColor(0x5865F2)
-        .setTitle(`Is this your refund address?`)
-        .setDescription(`Please verify your refund address below. Once confirmed, funds will be returned to you.\n\nAddress\n${address}`);
+        .setTitle(`Verify ${ticketData.coinData.name} ${label}`)
+        .setDescription(`${ticketData.coinData.icon} Confirm that you want your refund sent to:\n\n\`${address}\``);
 
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('refund_address_confirm_yes').setLabel('Confirm').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('refund_address_confirm_yes').setLabel('Confirm Refund').setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId('refund_address_confirm_no').setLabel('Back').setStyle(ButtonStyle.Secondary)
       );
 
-      await message.channel.send({ embeds: [verifyRefundAddressEmbed], components: [row] });
+      await message.channel.send({ embeds: [verifyRefundEmbed], components: [row] });
     }
   }
 });
